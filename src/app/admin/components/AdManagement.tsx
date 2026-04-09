@@ -90,6 +90,7 @@ export default function AdManagement() {
       startDate: '',
       endDate: '',
       content: '',
+      image: '',
       shopId: '',
       productId: '',
     });

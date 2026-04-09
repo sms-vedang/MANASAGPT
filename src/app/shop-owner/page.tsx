@@ -28,7 +28,7 @@ interface Product {
   _id: string;
   name: string;
   price: number;
-  shopId: string;
+  shopId: string | { _id: string; name: string };
   category: string;
   featured: boolean;
   stock?: number;
@@ -87,7 +87,9 @@ export default function ShopOwner() {
       const response = await fetch('/api/products');
       if (response.ok) {
         const allProducts = await response.json();
-        const shopProducts = allProducts.filter((p: Product) => p.shopId._id === shopId);
+        const shopProducts = allProducts.filter((p: Product) =>
+          typeof p.shopId === 'string' ? p.shopId === shopId : p.shopId._id === shopId
+        );
         setProducts(shopProducts);
       }
     } catch (error) {
