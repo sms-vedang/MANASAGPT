@@ -23,6 +23,8 @@ export async function POST() {
         rating: 4.5,
         tags: ['pharmacy', 'medicines'],
         sponsored: true,
+        priorityScore: 10,
+        verified: true,
       },
       {
         name: 'City Salon',
@@ -32,6 +34,8 @@ export async function POST() {
         rating: 4.2,
         tags: ['haircut', 'beauty'],
         sponsored: false,
+        priorityScore: 5,
+        verified: true,
       },
       {
         name: 'Tasty Bites Restaurant',
@@ -41,6 +45,8 @@ export async function POST() {
         rating: 4.0,
         tags: ['food', 'dining'],
         sponsored: false,
+        priorityScore: 3,
+        verified: false,
       },
     ]);
 
@@ -51,18 +57,24 @@ export async function POST() {
         price: 50,
         shopId: shops[0]._id,
         category: 'medicine',
+        featured: true,
+        stock: 100,
       },
       {
         name: 'Hair Shampoo',
         price: 200,
         shopId: shops[1]._id,
         category: 'beauty',
+        featured: false,
+        stock: 50,
       },
       {
         name: 'Chicken Biryani',
         price: 150,
         shopId: shops[2]._id,
         category: 'food',
+        featured: true,
+        stock: null,
       },
     ]);
 
@@ -77,10 +89,17 @@ export async function POST() {
       },
       {
         name: 'Datia Palace',
-        type: 'place',
+        type: 'landmark',
         description: 'Historical palace and tourist spot',
         timing: '9 AM - 5 PM',
         location: 'Datia Fort',
+      },
+      {
+        name: 'City Hospital',
+        type: 'government_office',
+        description: 'Government hospital serving the city',
+        timing: '24/7',
+        location: 'Main Road, Datia',
       },
     ]);
 

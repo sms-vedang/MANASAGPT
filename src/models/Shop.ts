@@ -8,6 +8,8 @@ export interface IShop extends Document {
   rating: number;
   tags: string[];
   sponsored: boolean;
+  priorityScore: number;
+  verified: boolean;
 }
 
 const ShopSchema: Schema = new Schema({
@@ -18,6 +20,8 @@ const ShopSchema: Schema = new Schema({
   rating: { type: Number, default: 0 },
   tags: [{ type: String }],
   sponsored: { type: Boolean, default: false },
+  priorityScore: { type: Number, default: 0 },
+  verified: { type: Boolean, default: false },
 });
 
 export default mongoose.models.Shop || mongoose.model<IShop>('Shop', ShopSchema);
