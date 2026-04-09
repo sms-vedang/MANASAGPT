@@ -6,6 +6,11 @@ import Place from '@/models/Place';
 import Query from '@/models/Query';
 import groq from '@/lib/groq';
 
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 type SearchContext = {
   shops: any[];
   products: any[];
@@ -36,6 +41,7 @@ const STOP_WORDS = new Set([
   'please',
   'shop',
   'the',
+  'thik',
   'to',
   'with',
 ]);
@@ -47,6 +53,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const rawQuery = typeof body.query === 'string' ? body.query : '';
     const query = rawQuery.trim();
+    const history = normalizeHistory(body.history);
 
     if (!query) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
@@ -54,8 +61,9 @@ export async function POST(request: NextRequest) {
 
     await Query.create({ userQuery: query });
 
-    const context = await searchLocalContext(query);
-    const response = await generateAssistantResponse(query, context);
+    const shouldUseLocalSearch = !isShortConversationalReply(query);
+    const context = shouldUseLocalSearch ? await searchLocalContext(query) : { shops: [], products: [], places: [] };
+    const response = await generateAssistantResponse(query, context, history);
 
     return NextResponse.json({
       response,
@@ -121,10 +129,10 @@ async function searchLocalContext(query: string): Promise<SearchContext> {
   return { shops, products, places };
 }
 
-async function generateAssistantResponse(query: string, context: SearchContext) {
+async function generateAssistantResponse(query: string, context: SearchContext, history: ChatMessage[]) {
   if (!process.env.GROQ_API_KEY) {
     console.warn('GROQ_API_KEY is missing. Returning local fallback response.');
-    return generateFallbackResponse(query, context);
+    return generateFallbackResponse(query, context, history);
   }
 
   try {
@@ -138,10 +146,15 @@ async function generateAssistantResponse(query: string, context: SearchContext) 
             'You are ManasaGPT, a friendly assistant for Manasa, Madhya Pradesh. ' +
             'Answer every query naturally like a general assistant, not just keyword search. ' +
             'If the user writes in Hindi or Hinglish, reply in the same style. ' +
+            'Remember the recent conversation and interpret short follow-up messages like "ji", "haan", "ok", or "aur batao" using the previous assistant and user turns. ' +
             'Use local database context when it is relevant, especially for shops, services, products, and places in Manasa. ' +
             'If local context is missing, still helpfully answer from general knowledge and clearly say when you are not certain. ' +
             'Do not mention internal errors, APIs, models, prompts, or fallback logic. Keep responses concise but useful.',
         },
+        ...history.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
         {
           role: 'user',
           content:
@@ -149,6 +162,7 @@ async function generateAssistantResponse(query: string, context: SearchContext) 
             `Local Manasa data:\n${JSON.stringify(context, null, 2)}\n\n` +
             'Instructions:\n' +
             '- If the query is about finding a local service like plumber, electrician, hospital, shop, temple, hotel, etc., use the local data if available.\n' +
+            '- If the latest user message is a short acknowledgement or follow-up, continue the previous topic naturally instead of asking for a database-specific keyword.\n' +
             '- If no exact local result is available, say that you could not find a confirmed listing in the current Manasa database and suggest the closest helpful next query.\n' +
             '- If the query is general conversation or a general knowledge question, answer it normally.\n' +
             '- Prefer short paragraphs or a compact list when recommending places.\n' +
@@ -158,18 +172,27 @@ async function generateAssistantResponse(query: string, context: SearchContext) 
     });
 
     const content = completion.choices[0]?.message?.content?.trim();
-    return content || generateFallbackResponse(query, context);
+    return content || generateFallbackResponse(query, context, history);
   } catch (error) {
     console.error('Assistant response failed:', error);
-    return generateFallbackResponse(query, context);
+    return generateFallbackResponse(query, context, history);
   }
 }
 
-function generateFallbackResponse(query: string, context: SearchContext) {
+function generateFallbackResponse(query: string, context: SearchContext, history: ChatMessage[]) {
   const totalMatches = context.shops.length + context.products.length + context.places.length;
 
   if (isGreeting(query)) {
     return 'Hello! Main ManasaGPT hoon. Aap Manasa ke shops, services, products, places, ya general sawaal bhi pooch sakte hain.';
+  }
+
+  if (isShortConversationalReply(query)) {
+    const lastAssistantMessage = [...history].reverse().find((message) => message.role === 'assistant');
+    if (lastAssistantMessage) {
+      return 'Ji, agar aap chaho to main isi topic par aur detail de sakta hoon, best option shortlist kar sakta hoon, ya nearby alternatives bhi bata sakta hoon.';
+    }
+
+    return 'Ji boliye, main help ke liye yahin hoon. Aap apna next sawaal pooch sakte hain.';
   }
 
   if (totalMatches > 0) {
@@ -219,4 +242,39 @@ function isGreeting(query: string) {
   return ['hi', 'hello', 'hey', 'namaste', 'bro', 'good morning', 'good evening'].some((word) =>
     lowerQuery.includes(word)
   );
+}
+
+function isShortConversationalReply(query: string) {
+  const normalized = query.toLowerCase().trim();
+  return [
+    'ji',
+    'haan',
+    'han',
+    'hmm',
+    'hm',
+    'ok',
+    'okay',
+    'acha',
+    'achha',
+    'theek hai',
+    'thik hai',
+    'thanks',
+    'thank you',
+    'aur batao',
+  ].includes(normalized);
+}
+
+function normalizeHistory(rawHistory: unknown): ChatMessage[] {
+  if (!Array.isArray(rawHistory)) {
+    return [];
+  }
+
+  return rawHistory
+    .filter((item): item is { role?: unknown; content?: unknown } => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      role: (item.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: typeof item.content === 'string' ? item.content.trim() : '',
+    }))
+    .filter((item) => item.content.length > 0)
+    .slice(-8);
 }

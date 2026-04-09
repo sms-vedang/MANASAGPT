@@ -8,6 +8,11 @@ interface Message {
   sender: 'user' | 'bot';
 }
 
+type ApiHistoryMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 const SUGGESTIONS = [
   'Manasa me best medical store kaunsa hai?',
   'Plumber milega kya near bus stand?',
@@ -36,6 +41,10 @@ export default function Home() {
     if (!messageText || loading) return;
 
     const userMessage: Message = { id: Date.now().toString(), text: messageText, sender: 'user' };
+    const history: ApiHistoryMessage[] = [...messages, userMessage].map((message) => ({
+      role: message.sender === 'bot' ? 'assistant' : 'user',
+      content: message.text,
+    }));
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
@@ -44,7 +53,7 @@ export default function Home() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: messageText }),
+        body: JSON.stringify({ query: messageText, history }),
       });
 
       const data = await response.json();
