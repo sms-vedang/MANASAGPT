@@ -1,0 +1,38 @@
+import { NextRequest, NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import Shop from '@/models/Shop';
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbConnect();
+    const { id } = await params;
+    const body = await request.json();
+    const shop = await Shop.findByIdAndUpdate(id, body, { new: true });
+    if (!shop) {
+      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
+    return NextResponse.json(shop);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbConnect();
+    const { id } = await params;
+    const shop = await Shop.findByIdAndDelete(id);
+    if (!shop) {
+      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Shop deleted' });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to delete shop' }, { status: 500 });
+  }
+}
