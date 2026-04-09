@@ -58,7 +58,7 @@ export default function Dashboard() {
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 rounded-xl shadow-lg">
+        <div className="bg-linear-to-r from-blue-600 to-blue-700 p-6 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-blue-100">Total Shops</h3>
@@ -67,7 +67,7 @@ export default function Dashboard() {
             <div className="text-4xl">🏪</div>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-green-600 to-green-700 p-6 rounded-xl shadow-lg">
+        <div className="bg-linear-to-r from-green-600 to-green-700 p-6 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-green-100">Total Products</h3>
@@ -76,7 +76,7 @@ export default function Dashboard() {
             <div className="text-4xl">🛍️</div>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-6 rounded-xl shadow-lg">
+        <div className="bg-linear-to-r from-purple-600 to-purple-700 p-6 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-purple-100">Total Places</h3>
@@ -85,7 +85,7 @@ export default function Dashboard() {
             <div className="text-4xl">🏛️</div>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-yellow-600 to-yellow-700 p-6 rounded-xl shadow-lg">
+        <div className="bg-linear-to-r from-yellow-600 to-yellow-700 p-6 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-yellow-100">Daily AI Queries</h3>
@@ -143,7 +143,7 @@ export default function Dashboard() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {topShops.map((shop) => (
-            <div key={shop._id} className="bg-gradient-to-r from-gray-700 to-gray-600 p-4 rounded-lg">
+            <div key={shop._id} className="bg-linear-to-r from-gray-700 to-gray-600 p-4 rounded-lg">
               <h4 className="font-semibold text-lg">{shop.name}</h4>
               <p className="text-gray-300 text-sm">Sponsored Shop</p>
             </div>

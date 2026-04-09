@@ -9,23 +9,7 @@ import groq from '@/lib/groq';
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
-
-    const bodyText = await request.text();
-
-    let body;
-    try {
-      // The body is coming as an escaped JSON string
-      let cleanText = bodyText;
-
-      // Unescape the JSON string
-      cleanText = cleanText.replace(/\\"/g, '"'); // Unescape quotes
-      cleanText = cleanText.replace(/\\\\/g, '\\'); // Unescape backslashes
-
-      body = JSON.parse(cleanText);
-    } catch (e) {
-      console.error('JSON parse error:', e);
-      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
-    }
+    const body = await request.json();
     const { query } = body;
 
     if (!query) {
@@ -45,6 +29,8 @@ export async function POST(request: NextRequest) {
     let results: any[] = [];
 
     switch (classification.intent) {
+      case 'greeting':
+        return NextResponse.json({ response: generateGreetingResponse() });
       case 'shop':
         console.log('Searching for shops with category:', classification.category);
         results = await Shop.find({
@@ -100,9 +86,31 @@ async function classifyQuery(query: string) {
   // Simple rule-based classification as fallback
   const lowerQuery = query.toLowerCase();
 
-  if (lowerQuery.includes('store') || lowerQuery.includes('shop') || lowerQuery.includes('restaurant') || lowerQuery.includes('salon') || lowerQuery.includes('hotel')) {
+  if (
+    lowerQuery.includes('hi') ||
+    lowerQuery.includes('hello') ||
+    lowerQuery.includes('hey') ||
+    lowerQuery.includes('bro') ||
+    lowerQuery.includes('good morning') ||
+    lowerQuery.includes('good evening')
+  ) {
+    return { intent: 'greeting', category: '' };
+  }
+
+  if (
+    lowerQuery.includes('store') ||
+    lowerQuery.includes('shop') ||
+    lowerQuery.includes('restaurant') ||
+    lowerQuery.includes('salon') ||
+    lowerQuery.includes('hotel') ||
+    lowerQuery.includes('medical') ||
+    lowerQuery.includes('pharmacy') ||
+    lowerQuery.includes('hospital') ||
+    lowerQuery.includes('clinic')
+  ) {
     let category = 'general';
     if (lowerQuery.includes('medical') || lowerQuery.includes('pharmacy')) category = 'medical';
+    else if (lowerQuery.includes('hospital') || lowerQuery.includes('clinic')) category = 'hospital';
     else if (lowerQuery.includes('salon') || lowerQuery.includes('beauty')) category = 'salon';
     else if (lowerQuery.includes('restaurant') || lowerQuery.includes('food')) category = 'restaurant';
     return { intent: 'shop', category };
@@ -155,7 +163,7 @@ async function generateInfoResponse(query: string) {
     return completion.choices[0]?.message?.content || "I'm sorry, I couldn't process your request at the moment.";
   } catch (e) {
     console.error('AI info response failed:', e);
-    return `I can help you with information about Manasa. You asked: "${query}". (Response generated without AI due to error)`;
+    return generateFallbackInfoResponse(query);
   }
 }
 
@@ -200,4 +208,27 @@ async function generateResponse(query: string, results: any[], intent: string) {
 
     return response;
   }
+}
+
+function generateGreetingResponse() {
+  return 'Hello! I’m ManasaGPT. I can help you find shops, medical stores, products, and places in Manasa. Try asking something like "best medical store in Manasa" or "temples in Manasa".';
+}
+
+function generateFallbackInfoResponse(query: string) {
+  const lowerQuery = query.toLowerCase();
+
+  if (
+    lowerQuery.includes('medical') ||
+    lowerQuery.includes('pharmacy') ||
+    lowerQuery.includes('hospital') ||
+    lowerQuery.includes('clinic')
+  ) {
+    return 'I can help you find medical stores, clinics, and hospitals in Manasa. Try asking "best medical store in Manasa" or "clinic near bus stand in Manasa".';
+  }
+
+  if (lowerQuery.includes('temple') || lowerQuery.includes('mandir') || lowerQuery.includes('fort') || lowerQuery.includes('palace')) {
+    return 'I can help you find important places in Manasa, including temples and landmarks. Try asking for a specific type of place, like "temples in Manasa".';
+  }
+
+  return `I can help with information about shops, products, and places in Manasa. You asked: "${query}". Please try a more specific query, such as "best medical store in Manasa" or "places to visit in Manasa".`;
 }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Ad from '@/models/Ad';
+// Import related models so Mongoose registers them before populate runs
+import '@/models/Shop';
+import '@/models/Product';
 
 export async function GET() {
   try {
@@ -8,7 +11,8 @@ export async function GET() {
     const ads = await Ad.find({}).populate('shopId', 'name').populate('productId', 'name');
     return NextResponse.json(ads);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch ads' }, { status: 500 });
+    console.error('[API /ads GET] Error:', error);
+    return NextResponse.json({ error: 'Failed to fetch ads', details: String(error) }, { status: 500 });
   }
 }
 
