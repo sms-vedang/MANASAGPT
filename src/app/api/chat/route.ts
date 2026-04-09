@@ -8,31 +8,24 @@ import groq from '@/lib/groq';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Chat API called');
     await dbConnect();
-    console.log('DB connected');
 
     const bodyText = await request.text();
-    console.log('Raw body text:', JSON.stringify(bodyText));
     
     let body;
     try {
       // The body is coming as an escaped JSON string
       let cleanText = bodyText;
-      console.log('Initial cleanText:', JSON.stringify(cleanText));
       
       // Unescape the JSON string
       cleanText = cleanText.replace(/\\"/g, '"'); // Unescape quotes
       cleanText = cleanText.replace(/\\\\/g, '\\'); // Unescape backslashes
-      console.log('After unescaping:', JSON.stringify(cleanText));
       
-      console.log('Clean text:', JSON.stringify(cleanText));
       body = JSON.parse(cleanText);
     } catch (e) {
       console.error('JSON parse error:', e);
-      return NextResponse.json({ error: 'Invalid JSON in request body', details: e.message }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
-    console.log('Parsed body:', body);
     const { query } = body;
 
     if (!query) {
@@ -99,7 +92,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Chat API Error:', error);
-    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
