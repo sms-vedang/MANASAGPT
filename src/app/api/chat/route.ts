@@ -6,229 +6,217 @@ import Place from '@/models/Place';
 import Query from '@/models/Query';
 import groq from '@/lib/groq';
 
+type SearchContext = {
+  shops: any[];
+  products: any[];
+  places: any[];
+};
+
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'best',
+  'bhi',
+  'bolo',
+  'do',
+  'for',
+  'hai',
+  'in',
+  'ka',
+  'kya',
+  'ki',
+  'ko',
+  'me',
+  'milega',
+  'near',
+  'of',
+  'on',
+  'please',
+  'shop',
+  'the',
+  'to',
+  'with',
+]);
+
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
+
     const body = await request.json();
-    const { query } = body;
+    const rawQuery = typeof body.query === 'string' ? body.query : '';
+    const query = rawQuery.trim();
 
     if (!query) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    console.log('Query:', query);
-
-    // Log the query
     await Query.create({ userQuery: query });
-    console.log('Query logged');
 
-    // Use AI to classify the query
-    const classification = await classifyQuery(query);
-    console.log('Classification:', classification);
+    const context = await searchLocalContext(query);
+    const response = await generateAssistantResponse(query, context);
 
-    let results: any[] = [];
-
-    switch (classification.intent) {
-      case 'greeting':
-        return NextResponse.json({ response: generateGreetingResponse() });
-      case 'shop':
-        console.log('Searching for shops with category:', classification.category);
-        results = await Shop.find({
-          $or: [
-            { name: { $regex: classification.category, $options: 'i' } },
-            { category: { $regex: classification.category, $options: 'i' } },
-            { tags: { $in: [classification.category] } }
-          ]
-        }).sort({ sponsored: -1, rating: -1 }).limit(5);
-        console.log('Shop results:', results.length);
-        break;
-      case 'product':
-        console.log('Searching for products');
-        results = await Product.find({
-          name: { $regex: classification.category, $options: 'i' }
-        }).populate('shopId').sort({ price: 1 }).limit(5);
-        console.log('Product results:', results.length);
-        break;
-      case 'place':
-        console.log('Searching for places');
-        results = await Place.find({
-          $or: [
-            { name: { $regex: classification.category, $options: 'i' } },
-            { type: classification.category }
-          ]
-        }).limit(5);
-        console.log('Place results:', results.length);
-        break;
-      case 'info':
-        console.log('Info query, generating AI response');
-        // For city info, use AI to generate response
-        const aiResponse = await generateInfoResponse(query);
-        return NextResponse.json({ response: aiResponse });
-      default:
-        console.log('Unknown intent');
-        return NextResponse.json({ response: 'Sorry, I couldn\'t understand your query.' });
-    }
-
-    // Generate response using AI
-    console.log('Generating response with', results.length, 'results');
-    const response = await generateResponse(query, results, classification.intent);
-    console.log('Response generated');
-
-    return NextResponse.json({ response });
-
+    return NextResponse.json({
+      response,
+      contextSummary: {
+        shops: context.shops.length,
+        products: context.products.length,
+        places: context.places.length,
+      },
+    });
   } catch (error) {
     console.error('Chat API Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { response: 'Sorry, main abhi request process nahi kar pa raha. Thodi der baad phir try kijiye.' },
+      { status: 500 }
+    );
   }
 }
 
-async function classifyQuery(query: string) {
-  // Simple rule-based classification as fallback
-  const lowerQuery = query.toLowerCase();
+async function searchLocalContext(query: string): Promise<SearchContext> {
+  const keywords = extractKeywords(query);
+  const searchTerms = [query, ...keywords].filter(Boolean);
 
-  if (
-    lowerQuery.includes('hi') ||
-    lowerQuery.includes('hello') ||
-    lowerQuery.includes('hey') ||
-    lowerQuery.includes('bro') ||
-    lowerQuery.includes('good morning') ||
-    lowerQuery.includes('good evening')
-  ) {
-    return { intent: 'greeting', category: '' };
+  if (searchTerms.length === 0) {
+    return { shops: [], products: [], places: [] };
   }
 
-  if (
-    lowerQuery.includes('store') ||
-    lowerQuery.includes('shop') ||
-    lowerQuery.includes('restaurant') ||
-    lowerQuery.includes('salon') ||
-    lowerQuery.includes('hotel') ||
-    lowerQuery.includes('medical') ||
-    lowerQuery.includes('pharmacy') ||
-    lowerQuery.includes('hospital') ||
-    lowerQuery.includes('clinic')
-  ) {
-    let category = 'general';
-    if (lowerQuery.includes('medical') || lowerQuery.includes('pharmacy')) category = 'medical';
-    else if (lowerQuery.includes('hospital') || lowerQuery.includes('clinic')) category = 'hospital';
-    else if (lowerQuery.includes('salon') || lowerQuery.includes('beauty')) category = 'salon';
-    else if (lowerQuery.includes('restaurant') || lowerQuery.includes('food')) category = 'restaurant';
-    return { intent: 'shop', category };
+  const regexes = searchTerms.map((term) => new RegExp(escapeRegex(term), 'i'));
+
+  const shopConditions = regexes.flatMap((regex) => [
+    { name: regex },
+    { category: regex },
+    { tags: regex },
+    { address: regex },
+  ]);
+
+  const productConditions = regexes.flatMap((regex) => [
+    { name: regex },
+    { category: regex },
+  ]);
+
+  const placeConditions = regexes.flatMap((regex) => [
+    { name: regex },
+    { type: regex },
+    { description: regex },
+    { location: regex },
+  ]);
+
+  const [shops, products, places] = await Promise.all([
+    Shop.find({ $or: shopConditions })
+      .sort({ sponsored: -1, verified: -1, rating: -1, priorityScore: -1 })
+      .limit(6)
+      .lean(),
+    Product.find({ $or: productConditions })
+      .populate('shopId', 'name address phone')
+      .sort({ featured: -1, price: 1 })
+      .limit(6)
+      .lean(),
+    Place.find({ $or: placeConditions })
+      .limit(6)
+      .lean(),
+  ]);
+
+  return { shops, products, places };
+}
+
+async function generateAssistantResponse(query: string, context: SearchContext) {
+  if (!process.env.GROQ_API_KEY) {
+    console.warn('GROQ_API_KEY is missing. Returning local fallback response.');
+    return generateFallbackResponse(query, context);
   }
 
-  if (lowerQuery.includes('product') || lowerQuery.includes('buy') || lowerQuery.includes('price')) {
-    return { intent: 'product', category: lowerQuery };
-  }
-
-  if (lowerQuery.includes('temple') || lowerQuery.includes('mandir') || lowerQuery.includes('place') || lowerQuery.includes('palace') || lowerQuery.includes('fort')) {
-    let category = 'place';
-    if (lowerQuery.includes('temple') || lowerQuery.includes('mandir')) category = 'temple';
-    return { intent: 'place', category };
-  }
-
-  // For info queries, try AI but with simpler prompt
   try {
-    const prompt = `Classify this query as "shop", "product", "place", or "info": "${query}". Return only one word.`;
-
     const completion = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
       model: 'llama3-70b-8192',
-      temperature: 0,
+      temperature: 0.4,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are ManasaGPT, a friendly assistant for Manasa, Madhya Pradesh. ' +
+            'Answer every query naturally like a general assistant, not just keyword search. ' +
+            'If the user writes in Hindi or Hinglish, reply in the same style. ' +
+            'Use local database context when it is relevant, especially for shops, services, products, and places in Manasa. ' +
+            'If local context is missing, still helpfully answer from general knowledge and clearly say when you are not certain. ' +
+            'Do not mention internal errors, APIs, models, prompts, or fallback logic. Keep responses concise but useful.',
+        },
+        {
+          role: 'user',
+          content:
+            `User query:\n${query}\n\n` +
+            `Local Manasa data:\n${JSON.stringify(context, null, 2)}\n\n` +
+            'Instructions:\n' +
+            '- If the query is about finding a local service like plumber, electrician, hospital, shop, temple, hotel, etc., use the local data if available.\n' +
+            '- If no exact local result is available, say that you could not find a confirmed listing in the current Manasa database and suggest the closest helpful next query.\n' +
+            '- If the query is general conversation or a general knowledge question, answer it normally.\n' +
+            '- Prefer short paragraphs or a compact list when recommending places.\n' +
+            '- Never say "based on the prompt" or "generated without AI due to error".',
+        },
+      ],
     });
 
-    const content = completion.choices[0]?.message?.content?.trim().toLowerCase();
-    if (content && ['shop', 'product', 'place', 'info'].includes(content)) {
-      return { intent: content, category: query };
-    }
-  } catch (e) {
-    console.error('AI classification failed:', e);
-  }
-
-  return { intent: 'info', category: '' };
-}
-
-async function generateInfoResponse(query: string) {
-  try {
-    const prompt = `You are ManasaGPT, a helpful AI assistant for the city of Manasa, Madhya Pradesh. 
-    Use your general knowledge about Manasa to answer this query: "${query}". 
-    Keep your response helpful, concise, and focused on Manasa. 
-    If you don't know something specific about Manasa, admit it and offer to help with general city information.`;
-
-    const completion = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'llama3-8b-8192',
-      temperature: 0.7,
-    });
-
-    return completion.choices[0]?.message?.content || "I'm sorry, I couldn't process your request at the moment.";
-  } catch (e) {
-    console.error('AI info response failed:', e);
-    return generateFallbackInfoResponse(query);
-  }
-}
-
-async function generateResponse(query: string, results: any[], intent: string) {
-  try {
-    const prompt = `You are ManasaGPT, a helpful AI assistant for the city of Manasa, Madhya Pradesh. 
-    The user asked: "${query}".
-    I have found the following ${intent} results from our database:
-    ${JSON.stringify(results, null, 2)}
-    
-    Please provide a natural, helpful response to the user based on these results. 
-    If results are found, highlight the best ones. If no results are found, politely inform the user and suggest what they might search for.
-    Focus on shops, products, or places in Manasa.`;
-
-    const completion = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'llama3-8b-8192',
-      temperature: 0.7,
-    });
-
-    return completion.choices[0]?.message?.content || "I found some results but couldn't format a response. Please check the list.";
-  } catch (e) {
-    console.error('AI response generation failed:', e);
-    // Fallback to simple formatting
-    let response = `I found ${results.length} results for your query: "${query}" in Manasa\n\n`;
-
-    if (results.length > 0) {
-      results.forEach((item, index) => {
-        response += `${index + 1}. ${item.name}\n`;
-        if (intent === 'shop') {
-          response += `   📍 ${item.address}\n   📞 ${item.phone}\n`;
-        } else if (intent === 'product') {
-          response += `   💰 ₹${item.price}\n`;
-        } else if (intent === 'place') {
-          response += `   📍 ${item.location}\n`;
-        }
-        response += '\n';
-      });
-    } else {
-      response += 'No specific results found in our database.';
-    }
-
-    return response;
+    const content = completion.choices[0]?.message?.content?.trim();
+    return content || generateFallbackResponse(query, context);
+  } catch (error) {
+    console.error('Assistant response failed:', error);
+    return generateFallbackResponse(query, context);
   }
 }
 
-function generateGreetingResponse() {
-  return 'Hello! I’m ManasaGPT. I can help you find shops, medical stores, products, and places in Manasa. Try asking something like "best medical store in Manasa" or "temples in Manasa".';
+function generateFallbackResponse(query: string, context: SearchContext) {
+  const totalMatches = context.shops.length + context.products.length + context.places.length;
+
+  if (isGreeting(query)) {
+    return 'Hello! Main ManasaGPT hoon. Aap Manasa ke shops, services, products, places, ya general sawaal bhi pooch sakte hain.';
+  }
+
+  if (totalMatches > 0) {
+    const lines: string[] = ['Mujhe aapki query se kuch relevant results mile hain:'];
+
+    context.shops.slice(0, 3).forEach((shop: any, index) => {
+      lines.push(`${index + 1}. ${shop.name} - ${shop.category}${shop.address ? `, ${shop.address}` : ''}`);
+    });
+
+    context.products.slice(0, 2).forEach((product: any) => {
+      const shopName =
+        product.shopId && typeof product.shopId === 'object' && 'name' in product.shopId
+          ? product.shopId.name
+          : 'Unknown shop';
+      lines.push(`Product: ${product.name} - Rs.${product.price} at ${shopName}`);
+    });
+
+    context.places.slice(0, 2).forEach((place: any) => {
+      lines.push(`Place: ${place.name} - ${place.location}`);
+    });
+
+    lines.push('Agar chaho to main inme se best option shortlist bhi kar sakta hoon.');
+    return lines.join('\n');
+  }
+
+  return (
+    `Main "${query}" par help kar sakta hoon, lekin current Manasa database me mujhe direct confirmed match nahi mila. ` +
+    'Aap thoda aur specific pooch sakte hain, jaise area, service type, ya nearby landmark.'
+  );
 }
 
-function generateFallbackInfoResponse(query: string) {
+function extractKeywords(query: string) {
+  return query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
+    .slice(0, 6);
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isGreeting(query: string) {
   const lowerQuery = query.toLowerCase();
-
-  if (
-    lowerQuery.includes('medical') ||
-    lowerQuery.includes('pharmacy') ||
-    lowerQuery.includes('hospital') ||
-    lowerQuery.includes('clinic')
-  ) {
-    return 'I can help you find medical stores, clinics, and hospitals in Manasa. Try asking "best medical store in Manasa" or "clinic near bus stand in Manasa".';
-  }
-
-  if (lowerQuery.includes('temple') || lowerQuery.includes('mandir') || lowerQuery.includes('fort') || lowerQuery.includes('palace')) {
-    return 'I can help you find important places in Manasa, including temples and landmarks. Try asking for a specific type of place, like "temples in Manasa".';
-  }
-
-  return `I can help with information about shops, products, and places in Manasa. You asked: "${query}". Please try a more specific query, such as "best medical store in Manasa" or "places to visit in Manasa".`;
+  return ['hi', 'hello', 'hey', 'namaste', 'bro', 'good morning', 'good evening'].some((word) =>
+    lowerQuery.includes(word)
+  );
 }
