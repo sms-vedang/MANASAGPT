@@ -106,7 +106,7 @@ export default function Analytics() {
             <div className="space-y-3">
               {data.recentQueries.map((query) => (
                 <div key={query._id} className="border-b border-gray-700 pb-2">
-                  <p className="text-gray-300">"{query.userQuery}"</p>
+                  <p className="text-gray-300">&quot;{query.userQuery}&quot;</p>
                   <p className="text-sm text-gray-500">
                     {new Date(query.timestamp).toLocaleString()}
                   </p>

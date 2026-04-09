@@ -123,54 +123,21 @@ export default function CityKnowledge() {
     }
   };
 
-  const updateNestedField = (path: string, value: any) => {
+  const updateNestedField = (path: string, value: string | number) => {
     setFormData(prev => {
       const keys = path.split('.');
-      const updated = { ...prev };
-      let current: any = updated;
+      const updated: City = structuredClone(prev);
+      let current: Record<string, unknown> = updated as unknown as Record<string, unknown>;
 
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) current[keys[i]] = {};
-        current = current[keys[i]];
+        const next = current[keys[i]];
+        if (!next || typeof next !== 'object') {
+          current[keys[i]] = {};
+        }
+        current = current[keys[i]] as Record<string, unknown>;
       }
 
       current[keys[keys.length - 1]] = value;
-      return updated;
-    });
-  };
-
-  const addToArray = (path: string) => {
-    setFormData(prev => {
-      const keys = path.split('.');
-      const updated = { ...prev };
-      let current: any = updated;
-
-      for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) current[keys[i]] = {};
-        current = current[keys[i]];
-      }
-
-      if (!Array.isArray(current[keys[keys.length - 1]])) {
-        current[keys[keys.length - 1]] = [];
-      }
-
-      current[keys[keys.length - 1]].push('');
-      return updated;
-    });
-  };
-
-  const updateArrayItem = (path: string, index: number, value: string) => {
-    setFormData(prev => {
-      const keys = path.split('.');
-      const updated = { ...prev };
-      let current: any = updated;
-
-      for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) current[keys[i]] = {};
-        current = current[keys[i]];
-      }
-
-      current[keys[keys.length - 1]][index] = value;
       return updated;
     });
   };
@@ -325,7 +292,7 @@ export default function CityKnowledge() {
         </div>
       ) : (
         <div className="text-center py-8 text-gray-400">
-          No city data found. Click "Add City Data" to get started.
+          No city data found. Click &quot;Add City Data&quot; to get started.
         </div>
       )}
     </div>

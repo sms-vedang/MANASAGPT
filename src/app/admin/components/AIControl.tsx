@@ -1,18 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+
+const DEFAULT_PROMPT =
+  'You are ManasaGPT, an AI assistant for the city of Manasa. Help users find shops, products, places, and information about the city. Be helpful, accurate, and engaging.';
 
 export default function AIControl() {
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [tone, setTone] = useState('friendly');
   const [resultLimit, setResultLimit] = useState(5);
   const [sponsoredPriority, setSponsoredPriority] = useState(true);
   const [mixAdsOrganic, setMixAdsOrganic] = useState(true);
-
-  useEffect(() => {
-    // Load current settings (mock for now)
-    setPrompt(`You are ManasaGPT, an AI assistant for the city of Manasa. Help users find shops, products, places, and information about the city. Be helpful, accurate, and engaging.`);
-  }, []);
 
   const handleSave = async () => {
     // Save to backend (implement API later)

@@ -11,10 +11,33 @@ type ChatMessage = {
   content: string;
 };
 
+type ShopResult = {
+  name: string;
+  category: string;
+  address?: string;
+};
+
+type ProductShopRef = {
+  name?: string;
+  address?: string;
+  phone?: string;
+};
+
+type ProductResult = {
+  name: string;
+  price: number;
+  shopId?: string | ProductShopRef;
+};
+
+type PlaceResult = {
+  name: string;
+  location: string;
+};
+
 type SearchContext = {
-  shops: any[];
-  products: any[];
-  places: any[];
+  shops: ShopResult[];
+  products: ProductResult[];
+  places: PlaceResult[];
 };
 
 const STOP_WORDS = new Set([
@@ -54,6 +77,7 @@ export async function POST(request: NextRequest) {
     const rawQuery = typeof body.query === 'string' ? body.query : '';
     const query = rawQuery.trim();
     const history = normalizeHistory(body.history);
+    const effectiveQuery = buildEffectiveQuery(query, history);
 
     if (!query) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
@@ -61,9 +85,9 @@ export async function POST(request: NextRequest) {
 
     await Query.create({ userQuery: query });
 
-    const shouldUseLocalSearch = !isShortConversationalReply(query);
-    const context = shouldUseLocalSearch ? await searchLocalContext(query) : { shops: [], products: [], places: [] };
-    const response = await generateAssistantResponse(query, context, history);
+    const shouldUseLocalSearch = shouldSearchLocalData(query, effectiveQuery);
+    const context = shouldUseLocalSearch ? await searchLocalContext(effectiveQuery, query) : { shops: [], products: [], places: [] };
+    const response = await generateAssistantResponse(query, effectiveQuery, context, history);
 
     return NextResponse.json({
       response,
@@ -82,7 +106,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function searchLocalContext(query: string): Promise<SearchContext> {
+async function searchLocalContext(query: string, originalQuery: string): Promise<SearchContext> {
   const keywords = extractKeywords(query);
   const searchTerms = [query, ...keywords].filter(Boolean);
 
@@ -111,28 +135,34 @@ async function searchLocalContext(query: string): Promise<SearchContext> {
     { location: regex },
   ]);
 
+  const prefersLocation = /kahan|kidhar|where|location|address|kahaa/i.test(originalQuery);
+
   const [shops, products, places] = await Promise.all([
     Shop.find({ $or: shopConditions })
       .sort({ sponsored: -1, verified: -1, rating: -1, priorityScore: -1 })
       .limit(6)
-      .lean(),
+      .lean<ShopResult[]>(),
     Product.find({ $or: productConditions })
       .populate('shopId', 'name address phone')
       .sort({ featured: -1, price: 1 })
       .limit(6)
-      .lean(),
+      .lean<ProductResult[]>(),
     Place.find({ $or: placeConditions })
       .limit(6)
-      .lean(),
+      .lean<PlaceResult[]>(),
   ]);
 
-  return { shops, products, places };
+  return {
+    shops,
+    products: prefersLocation ? products.slice(0, 1) : products,
+    places: prefersLocation ? places.concat([]) : places,
+  };
 }
 
-async function generateAssistantResponse(query: string, context: SearchContext, history: ChatMessage[]) {
+async function generateAssistantResponse(query: string, effectiveQuery: string, context: SearchContext, history: ChatMessage[]) {
   if (!process.env.GROQ_API_KEY) {
     console.warn('GROQ_API_KEY is missing. Returning local fallback response.');
-    return generateFallbackResponse(query, context, history);
+    return generateFallbackResponse(query, effectiveQuery, context, history);
   }
 
   try {
@@ -147,6 +177,8 @@ async function generateAssistantResponse(query: string, context: SearchContext, 
             'Answer every query naturally like a general assistant, not just keyword search. ' +
             'If the user writes in Hindi or Hinglish, reply in the same style. ' +
             'Remember the recent conversation and interpret short follow-up messages like "ji", "haan", "ok", or "aur batao" using the previous assistant and user turns. ' +
+            'If the user asks a vague follow-up like "ye kaha hai" or "uska address batao", infer the likely subject from the recent conversation. ' +
+            'If the user is casual, playful, rude, or asks random small-talk, stay calm and reply naturally instead of forcing a database answer. ' +
             'Use local database context when it is relevant, especially for shops, services, products, and places in Manasa. ' +
             'If local context is missing, still helpfully answer from general knowledge and clearly say when you are not certain. ' +
             'Do not mention internal errors, APIs, models, prompts, or fallback logic. Keep responses concise but useful.',
@@ -159,10 +191,12 @@ async function generateAssistantResponse(query: string, context: SearchContext, 
           role: 'user',
           content:
             `User query:\n${query}\n\n` +
+            `Interpreted search context:\n${effectiveQuery}\n\n` +
             `Local Manasa data:\n${JSON.stringify(context, null, 2)}\n\n` +
             'Instructions:\n' +
             '- If the query is about finding a local service like plumber, electrician, hospital, shop, temple, hotel, etc., use the local data if available.\n' +
             '- If the latest user message is a short acknowledgement or follow-up, continue the previous topic naturally instead of asking for a database-specific keyword.\n' +
+            '- If the user asks for location or address, prioritize the most recently discussed shop or place.\n' +
             '- If no exact local result is available, say that you could not find a confirmed listing in the current Manasa database and suggest the closest helpful next query.\n' +
             '- If the query is general conversation or a general knowledge question, answer it normally.\n' +
             '- Prefer short paragraphs or a compact list when recommending places.\n' +
@@ -172,14 +206,14 @@ async function generateAssistantResponse(query: string, context: SearchContext, 
     });
 
     const content = completion.choices[0]?.message?.content?.trim();
-    return content || generateFallbackResponse(query, context, history);
+    return content || generateFallbackResponse(query, effectiveQuery, context, history);
   } catch (error) {
     console.error('Assistant response failed:', error);
-    return generateFallbackResponse(query, context, history);
+    return generateFallbackResponse(query, effectiveQuery, context, history);
   }
 }
 
-function generateFallbackResponse(query: string, context: SearchContext, history: ChatMessage[]) {
+function generateFallbackResponse(query: string, effectiveQuery: string, context: SearchContext, history: ChatMessage[]) {
   const totalMatches = context.shops.length + context.products.length + context.places.length;
 
   if (isGreeting(query)) {
@@ -195,14 +229,28 @@ function generateFallbackResponse(query: string, context: SearchContext, history
     return 'Ji boliye, main help ke liye yahin hoon. Aap apna next sawaal pooch sakte hain.';
   }
 
+  if (isCasualGeneralQuery(query) && totalMatches === 0) {
+    return 'Main casual ya random baat bhi handle kar sakta hoon. Agar aap Manasa ke baare me poochna chaho to main shops, services, places, aur recommendations me help kar dunga.';
+  }
+
+  if (isLocationFollowUp(query) && context.shops.length > 0) {
+    const shop = context.shops[0];
+    return `${shop.name} ${shop.address ? shop.address : 'Manasa me listed hai'}. Agar chaho to main nearby alternatives bhi bata sakta hoon.`;
+  }
+
+  if (isLocationFollowUp(query) && context.places.length > 0) {
+    const place = context.places[0];
+    return `${place.name} ka location ${place.location} hai. Agar chaho to main wahan tak pahunchne ka easy route bhi suggest kar sakta hoon.`;
+  }
+
   if (totalMatches > 0) {
     const lines: string[] = ['Mujhe aapki query se kuch relevant results mile hain:'];
 
-    context.shops.slice(0, 3).forEach((shop: any, index) => {
+    context.shops.slice(0, 3).forEach((shop, index) => {
       lines.push(`${index + 1}. ${shop.name} - ${shop.category}${shop.address ? `, ${shop.address}` : ''}`);
     });
 
-    context.products.slice(0, 2).forEach((product: any) => {
+    context.products.slice(0, 2).forEach((product) => {
       const shopName =
         product.shopId && typeof product.shopId === 'object' && 'name' in product.shopId
           ? product.shopId.name
@@ -210,7 +258,7 @@ function generateFallbackResponse(query: string, context: SearchContext, history
       lines.push(`Product: ${product.name} - Rs.${product.price} at ${shopName}`);
     });
 
-    context.places.slice(0, 2).forEach((place: any) => {
+    context.places.slice(0, 2).forEach((place) => {
       lines.push(`Place: ${place.name} - ${place.location}`);
     });
 
@@ -220,7 +268,7 @@ function generateFallbackResponse(query: string, context: SearchContext, history
 
   return (
     `Main "${query}" par help kar sakta hoon, lekin current Manasa database me mujhe direct confirmed match nahi mila. ` +
-    'Aap thoda aur specific pooch sakte hain, jaise area, service type, ya nearby landmark.'
+    `Aap thoda aur specific pooch sakte hain, jaise area, service type, nearby landmark, ya "${effectiveQuery}" ke baare me aur detail.`
   );
 }
 
@@ -262,6 +310,65 @@ function isShortConversationalReply(query: string) {
     'thank you',
     'aur batao',
   ].includes(normalized);
+}
+
+function isLocationFollowUp(query: string) {
+  return /kahan|kidhar|where|address|location|kahaa/i.test(query);
+}
+
+function isCasualGeneralQuery(query: string) {
+  return /mazak|joke|timepass|random|bakwas|faltu|aisi|waisi|funny|meme/i.test(query);
+}
+
+function shouldSearchLocalData(query: string, effectiveQuery: string) {
+  if (isShortConversationalReply(query)) {
+    return false;
+  }
+
+  if (isLocationFollowUp(query)) {
+    return true;
+  }
+
+  return extractKeywords(effectiveQuery).length > 0;
+}
+
+function buildEffectiveQuery(query: string, history: ChatMessage[]) {
+  if (!isLocationFollowUp(query) && !isShortConversationalReply(query)) {
+    return query;
+  }
+
+  const lastAssistantEntity = extractLastEntity(history);
+  if (lastAssistantEntity && isLocationFollowUp(query)) {
+    return `${lastAssistantEntity} location`;
+  }
+
+  const lastMeaningfulUserQuery = [...history]
+    .reverse()
+    .find((message) => message.role === 'user' && !isShortConversationalReply(message.content));
+
+  return lastMeaningfulUserQuery?.content || query;
+}
+
+function extractLastEntity(history: ChatMessage[]) {
+  const lastAssistantMessage = [...history].reverse().find((message) => message.role === 'assistant');
+  if (!lastAssistantMessage) {
+    return '';
+  }
+
+  const patterns = [
+    /\d+\.\s(.+?)\s-\s/g,
+    /Place:\s(.+?)\s-\s/g,
+    /Product:\s(.+?)\s-\s/g,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(lastAssistantMessage.content);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return '';
 }
 
 function normalizeHistory(rawHistory: unknown): ChatMessage[] {

@@ -1,11 +1,30 @@
 'use client';
 
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 
 interface Message {
   id: string;
   text: string;
   sender: 'user' | 'bot';
+}
+
+interface SessionUser {
+  username: string;
+  role: string;
+}
+
+interface Ad {
+  _id: string;
+  type: 'sponsored' | 'featured' | 'banner';
+  priority: number;
+  startDate: string;
+  endDate?: string;
+  content: string;
+  image?: string;
+  shopId?: { _id: string; name: string };
+  productId?: { _id: string; name: string };
 }
 
 type ApiHistoryMessage = {
@@ -30,11 +49,69 @@ export default function Home() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ads, setAds] = useState<Ad[]>([]);
+  const [user, setUser] = useState<SessionUser | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    void fetchAds();
+    void fetchSession();
+  }, []);
+
+  const activeAds = useMemo(() => {
+    const now = new Date();
+    return ads.filter((ad) => {
+      const starts = new Date(ad.startDate) <= now;
+      const ends = !ad.endDate || new Date(ad.endDate) >= now;
+      return starts && ends;
+    });
+  }, [ads]);
+
+  const bannerAd = activeAds
+    .filter((ad) => ad.type === 'banner')
+    .sort((a, b) => b.priority - a.priority)[0];
+
+  const sponsoredAds = activeAds
+    .filter((ad) => ad.type !== 'banner')
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 2);
+
+  const fetchAds = async () => {
+    try {
+      const response = await fetch('/api/ads');
+      const data = await response.json();
+      setAds(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to fetch ads:', error);
+    }
+  };
+
+  const fetchSession = async () => {
+    try {
+      const response = await fetch('/api/auth/check');
+      if (!response.ok) {
+        setUser(null);
+        return;
+      }
+      const data = await response.json();
+      setUser(data.user ?? null);
+    } catch (error) {
+      console.error('Failed to fetch session:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setUser(null);
+    } catch (error) {
+      console.error('Failed to logout:', error);
+    }
+  };
 
   const sendMessage = async (preset?: string) => {
     const messageText = (preset ?? input).trim();
@@ -63,7 +140,7 @@ export default function Home() {
         ...prev,
         { id: (Date.now() + 1).toString(), text, sender: 'bot' },
       ]);
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -92,10 +169,71 @@ export default function Home() {
             <p className="text-xs uppercase tracking-[0.24em] text-blue-200/70">Manasa Assistant</p>
             <h1 className="text-2xl font-semibold">ManasaGPT</h1>
           </div>
-          <div className="hidden text-sm text-slate-300 md:block">
-            Local discovery + general assistant
+
+          <div className="flex items-center gap-3">
+            <div className="hidden text-sm text-slate-300 md:block">Local discovery + general assistant</div>
+            {user ? (
+              <>
+                <span className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 md:inline-flex">
+                  {user.username}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm text-red-200 hover:bg-red-500/20"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/admin/login"
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+              >
+                Admin Login
+              </Link>
+            )}
           </div>
         </header>
+
+        {bannerAd && (
+          <section className="mb-4 overflow-hidden rounded-[28px] border border-white/10 bg-[#132038]">
+            <div className="grid items-center gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="p-6">
+                <p className="mb-2 text-xs uppercase tracking-[0.22em] text-blue-200/80">Featured Banner</p>
+                <h2 className="text-2xl font-semibold text-white">{bannerAd.content}</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  ManasaGPT par highlighted city promotion ab live hai. Admin panel se banner content aur priority update kar sakte ho.
+                </p>
+              </div>
+              {bannerAd.image && (
+                bannerAd.image.startsWith('/') ? (
+                  <div className="relative h-56 w-full md:h-full">
+                    <Image src={bannerAd.image} alt={bannerAd.content} fill className="object-cover" priority sizes="(max-width: 768px) 100vw, 40vw" />
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={bannerAd.image} alt={bannerAd.content} className="h-56 w-full object-cover md:h-full" />
+                )
+              )}
+            </div>
+          </section>
+        )}
+
+        {sponsoredAds.length > 0 && (
+          <section className="mb-4 grid gap-3 md:grid-cols-2">
+            {sponsoredAds.map((ad) => (
+              <div key={ad._id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  {ad.type === 'sponsored' ? 'Sponsored Shop' : 'Featured Product'}
+                </p>
+                <p className="mt-2 text-base font-semibold text-white">{ad.content}</p>
+                <p className="mt-1 text-sm text-slate-300">
+                  {ad.shopId?.name || ad.productId?.name || 'Promotion active'}
+                </p>
+              </div>
+            ))}
+          </section>
+        )}
 
         <section className="mb-4">
           <div className="flex flex-wrap gap-2">
@@ -115,10 +253,7 @@ export default function Home() {
         <section className="flex-1 overflow-y-auto rounded-[28px] border border-white/10 bg-[#0f1727] px-3 py-4 shadow-2xl shadow-black/20 md:px-5">
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] rounded-3xl px-5 py-4 text-[15px] leading-7 md:max-w-[75%] ${
                     message.sender === 'user'
@@ -136,14 +271,8 @@ export default function Home() {
                 <div className="rounded-3xl border border-white/10 bg-white/8 px-5 py-4">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300" />
-                    <span
-                      className="h-2 w-2 animate-bounce rounded-full bg-slate-300"
-                      style={{ animationDelay: '0.12s' }}
-                    />
-                    <span
-                      className="h-2 w-2 animate-bounce rounded-full bg-slate-300"
-                      style={{ animationDelay: '0.24s' }}
-                    />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300" style={{ animationDelay: '0.12s' }} />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300" style={{ animationDelay: '0.24s' }} />
                   </div>
                 </div>
               </div>
