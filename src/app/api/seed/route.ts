@@ -3,6 +3,8 @@ import dbConnect from '@/lib/mongodb';
 import Shop from '@/models/Shop';
 import Product from '@/models/Product';
 import Place from '@/models/Place';
+import Ad from '@/models/Ad';
+import User from '@/models/User';
 
 export async function POST() {
   try {
@@ -12,13 +14,15 @@ export async function POST() {
     await Shop.deleteMany({});
     await Product.deleteMany({});
     await Place.deleteMany({});
+    await Ad.deleteMany({});
+    await User.deleteMany({});
 
     // Sample shops
     const shops = await Shop.insertMany([
       {
         name: 'Apollo Pharmacy',
         category: 'medical',
-        address: 'Main Road, Datia',
+        address: 'Main Road, Manasa',
         phone: '1234567890',
         rating: 4.5,
         tags: ['pharmacy', 'medicines'],
@@ -29,7 +33,7 @@ export async function POST() {
       {
         name: 'City Salon',
         category: 'salon',
-        address: 'Near Bus Stand, Datia',
+        address: 'Near Bus Stand, Manasa',
         phone: '0987654321',
         rating: 4.2,
         tags: ['haircut', 'beauty'],
@@ -40,7 +44,7 @@ export async function POST() {
       {
         name: 'Tasty Bites Restaurant',
         category: 'restaurant',
-        address: 'Market Area, Datia',
+        address: 'Market Area, Manasa',
         phone: '1122334455',
         rating: 4.0,
         tags: ['food', 'dining'],
@@ -51,7 +55,7 @@ export async function POST() {
     ]);
 
     // Sample products
-    await Product.insertMany([
+    const products = await Product.insertMany([
       {
         name: 'Paracetamol Tablets',
         price: 50,
@@ -83,23 +87,70 @@ export async function POST() {
       {
         name: 'Pitambara Peeth',
         type: 'temple',
-        description: 'Famous temple in Datia',
+        description: 'Famous temple in Manasa',
         timing: '6 AM - 8 PM',
-        location: 'Datia Palace Complex',
+        location: 'Manasa Palace Complex',
       },
       {
-        name: 'Datia Palace',
+        name: 'Manasa Palace',
         type: 'landmark',
         description: 'Historical palace and tourist spot',
         timing: '9 AM - 5 PM',
-        location: 'Datia Fort',
+        location: 'Manasa Fort',
       },
       {
         name: 'City Hospital',
         type: 'government_office',
         description: 'Government hospital serving the city',
         timing: '24/7',
-        location: 'Main Road, Datia',
+        location: 'Main Road, Manasa',
+      },
+    ]);
+
+    // Sample ads
+    await Ad.insertMany([
+      {
+        type: 'sponsored',
+        priority: 5,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        content: 'Best pharmacy in town with 24/7 service',
+        shopId: shops[0]._id,
+      },
+      {
+        type: 'banner',
+        priority: 8,
+        startDate: new Date(),
+        content: 'Welcome to ManasaGPT - Your City Assistant',
+        image: '/banner-welcome.jpg',
+      },
+      {
+        type: 'featured',
+        priority: 3,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        content: 'Premium hair care products now available',
+        productId: products[1]._id,
+      },
+    ]);
+
+    // Sample users
+    await User.insertMany([
+      {
+        username: 'admin',
+        password: 'admin123', // In production, hash this
+        role: 'admin',
+      },
+      {
+        username: 'shop_owner',
+        password: 'shop123',
+        role: 'shop_owner',
+        shopId: shops[0]._id,
+      },
+      {
+        username: 'data_entry',
+        password: 'data123',
+        role: 'data_entry',
       },
     ]);
 

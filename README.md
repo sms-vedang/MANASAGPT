@@ -1,6 +1,6 @@
 # ManasaGPT
 
-An AI-powered city assistant for Datia, helping users discover shops, products, places, and local information through a conversational interface.
+An AI-powered city assistant for Manasa, helping users discover shops, products, places, and local information through a conversational interface.
 
 ## Features
 

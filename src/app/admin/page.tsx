@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Dashboard from './components/Dashboard';
 import ShopManagement from './components/ShopManagement';
 import ProductManagement from './components/ProductManagement';
@@ -13,8 +14,43 @@ import Settings from './components/Settings';
 
 type Tab = 'dashboard' | 'shops' | 'products' | 'places' | 'city' | 'ads' | 'analytics' | 'ai' | 'settings';
 
+interface User {
+  id: string;
+  username: string;
+  role: string;
+  shopId?: string;
+}
+
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('/api/auth/check');
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+      } else {
+        router.push('/admin/login');
+      }
+    } catch (error) {
+      router.push('/admin/login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/admin/login');
+  };
 
   const tabs = [
     { id: 'dashboard' as Tab, name: 'Dashboard', icon: '📊' },
@@ -53,11 +89,34 @@ export default function Admin() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white flex">
       {/* Sidebar */}
       <div className="w-64 bg-gray-800 p-4">
-        <h1 className="text-xl font-bold mb-6 text-center">CityAI Admin</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-xl font-bold">CityAI Admin</h1>
+          <button
+            onClick={handleLogout}
+            className="text-red-400 hover:text-red-300 text-sm"
+          >
+            Logout
+          </button>
+        </div>
+        <div className="mb-4 text-sm text-gray-400">
+          Welcome, {user.username} ({user.role})
+        </div>
         <nav className="space-y-2">
           {tabs.map((tab) => (
             <button

@@ -8,6 +8,7 @@ interface Shop {
   category: string;
   address: string;
   phone: string;
+  website?: string;
   rating: number;
   tags: string[];
   sponsored: boolean;
@@ -25,6 +26,7 @@ export default function ShopManagement() {
     category: '',
     address: '',
     phone: '',
+    website: '',
     rating: 0,
     tags: '',
     sponsored: false,
@@ -83,6 +85,7 @@ export default function ShopManagement() {
       category: shop.category,
       address: shop.address,
       phone: shop.phone,
+      website: shop.website || '',
       rating: shop.rating,
       tags: shop.tags.join(', '),
       sponsored: shop.sponsored,
@@ -126,6 +129,7 @@ export default function ShopManagement() {
       category: '',
       address: '',
       phone: '',
+      website: '',
       rating: 0,
       tags: '',
       sponsored: false,
@@ -186,6 +190,13 @@ export default function ShopManagement() {
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="bg-gray-700 p-2 rounded"
                 required
+              />
+              <input
+                type="url"
+                placeholder="Website (optional)"
+                value={formData.website}
+                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                className="bg-gray-700 p-2 rounded"
               />
               <input
                 type="number"
@@ -260,6 +271,7 @@ export default function ShopManagement() {
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Address</th>
               <th className="px-4 py-2">Phone</th>
+              <th className="px-4 py-2">Website</th>
               <th className="px-4 py-2">Rating</th>
               <th className="px-4 py-2">Sponsored</th>
               <th className="px-4 py-2">Verified</th>
@@ -273,6 +285,15 @@ export default function ShopManagement() {
                 <td className="px-4 py-2">{shop.category}</td>
                 <td className="px-4 py-2">{shop.address}</td>
                 <td className="px-4 py-2">{shop.phone}</td>
+                <td className="px-4 py-2">
+                  {shop.website ? (
+                    <a href={shop.website} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                      Visit
+                    </a>
+                  ) : (
+                    'N/A'
+                  )}
+                </td>
                 <td className="px-4 py-2">{shop.rating}</td>
                 <td className="px-4 py-2">
                   <input

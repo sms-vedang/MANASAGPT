@@ -11,16 +11,16 @@ export async function POST(request: NextRequest) {
     await dbConnect();
 
     const bodyText = await request.text();
-    
+
     let body;
     try {
       // The body is coming as an escaped JSON string
       let cleanText = bodyText;
-      
+
       // Unescape the JSON string
       cleanText = cleanText.replace(/\\"/g, '"'); // Unescape quotes
       cleanText = cleanText.replace(/\\\\/g, '\\'); // Unescape backslashes
-      
+
       body = JSON.parse(cleanText);
     } catch (e) {
       console.error('JSON parse error:', e);
@@ -140,29 +140,64 @@ async function classifyQuery(query: string) {
 }
 
 async function generateInfoResponse(query: string) {
-  // Temporary mock response
-  return `I can help you with information about Datia. You asked: "${query}". This is a placeholder response while we fix the AI integration.`;
+  try {
+    const prompt = `You are ManasaGPT, a helpful AI assistant for the city of Manasa, Madhya Pradesh. 
+    Use your general knowledge about Manasa to answer this query: "${query}". 
+    Keep your response helpful, concise, and focused on Manasa. 
+    If you don't know something specific about Manasa, admit it and offer to help with general city information.`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama3-8b-8192',
+      temperature: 0.7,
+    });
+
+    return completion.choices[0]?.message?.content || "I'm sorry, I couldn't process your request at the moment.";
+  } catch (e) {
+    console.error('AI info response failed:', e);
+    return `I can help you with information about Manasa. You asked: "${query}". (Response generated without AI due to error)`;
+  }
 }
 
 async function generateResponse(query: string, results: any[], intent: string) {
-  // Temporary mock response
-  let response = `I found ${results.length} results for your query: "${query}"\n\n`;
+  try {
+    const prompt = `You are ManasaGPT, a helpful AI assistant for the city of Manasa, Madhya Pradesh. 
+    The user asked: "${query}".
+    I have found the following ${intent} results from our database:
+    ${JSON.stringify(results, null, 2)}
+    
+    Please provide a natural, helpful response to the user based on these results. 
+    If results are found, highlight the best ones. If no results are found, politely inform the user and suggest what they might search for.
+    Focus on shops, products, or places in Manasa.`;
 
-  if (results.length > 0) {
-    results.forEach((item, index) => {
-      response += `${index + 1}. ${item.name}\n`;
-      if (intent === 'shop') {
-        response += `   📍 ${item.address}\n   📞 ${item.phone}\n`;
-      } else if (intent === 'product') {
-        response += `   💰 ₹${item.price}\n`;
-      } else if (intent === 'place') {
-        response += `   📍 ${item.location}\n`;
-      }
-      response += '\n';
+    const completion = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama3-8b-8192',
+      temperature: 0.7,
     });
-  } else {
-    response += 'No specific results found in our database.';
-  }
 
-  return response;
+    return completion.choices[0]?.message?.content || "I found some results but couldn't format a response. Please check the list.";
+  } catch (e) {
+    console.error('AI response generation failed:', e);
+    // Fallback to simple formatting
+    let response = `I found ${results.length} results for your query: "${query}" in Manasa\n\n`;
+
+    if (results.length > 0) {
+      results.forEach((item, index) => {
+        response += `${index + 1}. ${item.name}\n`;
+        if (intent === 'shop') {
+          response += `   📍 ${item.address}\n   📞 ${item.phone}\n`;
+        } else if (intent === 'product') {
+          response += `   💰 ₹${item.price}\n`;
+        } else if (intent === 'place') {
+          response += `   📍 ${item.location}\n`;
+        }
+        response += '\n';
+      });
+    } else {
+      response += 'No specific results found in our database.';
+    }
+
+    return response;
+  }
 }

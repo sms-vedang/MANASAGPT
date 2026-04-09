@@ -10,7 +10,7 @@ interface Message {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', text: 'Hello! I\'m ManasaGPT, your AI assistant for Datia. How can I help you today?', sender: 'bot' }
+    { id: '1', text: 'Hello! I\'m ManasaGPT, your AI assistant for Manasa. How can I help you today?', sender: 'bot' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,17 +44,16 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
       <header className="bg-white dark:bg-gray-800 shadow-sm p-4">
-        <h1 className="text-xl font-bold text-center text-gray-800 dark:text-white">ManasaGPT - Datia Assistant</h1>
+        <h1 className="text-xl font-bold text-center text-gray-800 dark:text-white">ManasaGPT - Manasa Assistant</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-              message.sender === 'user'
+            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.sender === 'user'
                 ? 'bg-blue-500 text-white'
                 : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white'
-            }`}>
+              }`}>
               <pre className="whitespace-pre-wrap font-sans">{message.text}</pre>
             </div>
           </div>
@@ -79,7 +78,7 @@ export default function Home() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask me about shops, products, places in Datia..."
+            placeholder="Ask me about shops, products, places in Manasa..."
             className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:border-gray-600"
             disabled={loading}
           />

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ManasaGPT - Datia Assistant",
-  description: "AI-powered city assistant for Datia",
+  title: "ManasaGPT - Manasa Assistant",
+  description: "AI-powered city assistant for Manasa",
 };
 
 export default function RootLayout({

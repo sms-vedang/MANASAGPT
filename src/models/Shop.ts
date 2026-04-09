@@ -5,6 +5,7 @@ export interface IShop extends Document {
   category: string;
   address: string;
   phone: string;
+  website?: string;
   rating: number;
   tags: string[];
   sponsored: boolean;
@@ -17,6 +18,7 @@ const ShopSchema: Schema = new Schema({
   category: { type: String, required: true },
   address: { type: String, required: true },
   phone: { type: String, required: true },
+  website: { type: String },
   rating: { type: Number, default: 0 },
   tags: [{ type: String }],
   sponsored: { type: Boolean, default: false },

@@ -6,6 +6,7 @@ export interface IAd extends Document {
   startDate: Date;
   endDate?: Date;
   content: string;
+  image?: string;
   shopId?: mongoose.Types.ObjectId;
   productId?: mongoose.Types.ObjectId;
 }
@@ -16,6 +17,7 @@ const AdSchema: Schema = new Schema({
   startDate: { type: Date, required: true },
   endDate: { type: Date },
   content: { type: String, required: true },
+  image: { type: String },
   shopId: { type: Schema.Types.ObjectId, ref: 'Shop' },
   productId: { type: Schema.Types.ObjectId, ref: 'Product' },
 });

@@ -9,6 +9,7 @@ interface Ad {
   startDate: string;
   endDate?: string;
   content: string;
+  image?: string;
   shopId?: { _id: string; name: string };
   productId?: { _id: string; name: string };
 }
@@ -24,6 +25,7 @@ export default function AdManagement() {
     startDate: '',
     endDate: '',
     content: '',
+    image: '',
     shopId: '',
     productId: '',
   });
@@ -155,6 +157,13 @@ export default function AdManagement() {
               className="bg-gray-700 p-2 rounded w-full h-24"
               required
             />
+            <input
+              type="url"
+              placeholder="Image URL (optional)"
+              value={formData.image}
+              onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+              className="bg-gray-700 p-2 rounded w-full"
+            />
             <div className="flex space-x-2">
               <button type="submit" className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
                 {editingAd ? 'Update' : 'Create'}
@@ -181,6 +190,7 @@ export default function AdManagement() {
             <tr className="bg-gray-700">
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Content</th>
+              <th className="px-4 py-2">Image</th>
               <th className="px-4 py-2">Priority</th>
               <th className="px-4 py-2">Start Date</th>
               <th className="px-4 py-2">End Date</th>
@@ -192,6 +202,13 @@ export default function AdManagement() {
               <tr key={ad._id} className="border-b border-gray-700">
                 <td className="px-4 py-2 capitalize">{ad.type}</td>
                 <td className="px-4 py-2 max-w-xs truncate">{ad.content}</td>
+                <td className="px-4 py-2">
+                  {ad.image ? (
+                    <img src={ad.image} alt="Ad" className="w-16 h-16 object-cover rounded" />
+                  ) : (
+                    'No image'
+                  )}
+                </td>
                 <td className="px-4 py-2">{ad.priority}</td>
                 <td className="px-4 py-2">{new Date(ad.startDate).toLocaleDateString()}</td>
                 <td className="px-4 py-2">{ad.endDate ? new Date(ad.endDate).toLocaleDateString() : 'Ongoing'}</td>
