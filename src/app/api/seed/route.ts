@@ -122,7 +122,7 @@ export async function POST() {
         priority: 8,
         startDate: new Date(),
         content: 'Welcome to ManasaGPT - Your City Assistant',
-        image: '/banner-welcome.jpg',
+        image: '/banner-welcome.svg',
       },
       {
         type: 'featured',
