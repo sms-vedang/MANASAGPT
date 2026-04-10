@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { canManageShop, requireUser } from '@/lib/auth';
 import Shop from '@/models/Shop';
 
 export async function GET(
@@ -7,8 +8,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { user, error } = await requireUser(request, ['admin', 'shop_owner']);
+    if (error || !user) return error;
+
     await dbConnect();
     const { id } = await params;
+
+    if (!canManageShop(user, id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const shop = await Shop.findById(id);
     if (!shop) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
@@ -24,10 +33,29 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { user, error } = await requireUser(request, ['admin', 'shop_owner']);
+    if (error || !user) return error;
+
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
-    const shop = await Shop.findByIdAndUpdate(id, body, {
+    if (!canManageShop(user, id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const allowedUpdates =
+      user.role === 'admin'
+        ? body
+        : {
+            name: body.name,
+            category: body.category,
+            address: body.address,
+            phone: body.phone,
+            website: body.website,
+            tags: body.tags,
+          };
+
+    const shop = await Shop.findByIdAndUpdate(id, allowedUpdates, {
       new: true,
       runValidators: true,
     });
@@ -46,6 +74,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const { id } = await params;
     const shop = await Shop.findByIdAndDelete(id);

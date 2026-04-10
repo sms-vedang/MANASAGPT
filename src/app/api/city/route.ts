@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import City from '@/models/City';
 
 export async function GET() {
@@ -17,6 +18,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const body = await request.json();
     // For simplicity, update the existing city or create new

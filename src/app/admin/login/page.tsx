@@ -13,10 +13,16 @@ export default function Login() {
   // Declare checkAuth BEFORE useEffect that uses it
   const checkAuth = useCallback(async () => {
     try {
-      const response = await fetch('/api/auth/check');
+      const response = await fetch('/api/auth/check', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
-        router.push(data.user?.role === 'shop_owner' ? '/shop-owner' : '/admin');
+        if (data.user?.role === 'shop_owner') {
+          router.push('/shop-owner');
+          return;
+        }
+        if (data.user?.role === 'admin') {
+          router.push('/admin');
+        }
       }
     } catch {
       // Not logged in, stay on page
@@ -43,8 +49,10 @@ export default function Login() {
         const data = await response.json();
         if (data.user.role === 'shop_owner') {
           router.push('/shop-owner');
-        } else {
+        } else if (data.user.role === 'admin') {
           router.push('/admin');
+        } else {
+          setError('This account does not have dashboard access.');
         }
       } else {
         const data = await response.json();

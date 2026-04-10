@@ -1,13 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import Query from '@/models/Query';
 import Shop from '@/models/Shop';
 import Product from '@/models/Product';
 import Place from '@/models/Place';
 import Ad from '@/models/Ad';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
 
     // Get counts

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import User from '@/models/User';
 import '@/models/Shop';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const users = await User.find({}).populate('shopId', 'name category').select('-password');
     return NextResponse.json(users);
@@ -16,6 +20,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const body = await request.json();
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import Order from '@/models/Order';
 
 // POST /api/orders — place a new order
@@ -47,16 +48,27 @@ export async function POST(request: NextRequest) {
 // GET /api/orders — list all orders (admin or shopId-filtered)
 export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireUser(request, ['admin', 'shop_owner']);
+    if (error || !user) return error;
+
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
-    const shopId = searchParams.get('shopId');
+    const requestedShopId = searchParams.get('shopId');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1);
 
     const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
-    if (shopId) filter.shopId = shopId;
+
+    if (user.role === 'shop_owner') {
+      if (!user.shopId) {
+        return NextResponse.json({ error: 'This account is not linked to a shop' }, { status: 403 });
+      }
+      filter.shopId = user.shopId;
+    } else if (requestedShopId) {
+      filter.shopId = requestedShopId;
+    }
 
     const [orders, total] = await Promise.all([
       Order.find(filter)
@@ -77,6 +89,9 @@ export async function GET(request: NextRequest) {
 // PATCH /api/orders?id=xxx — update order status
 export async function PATCH(request: NextRequest) {
   try {
+    const { user, error } = await requireUser(request, ['admin', 'shop_owner']);
+    if (error || !user) return error;
+
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -86,6 +101,13 @@ export async function PATCH(request: NextRequest) {
     const validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+
+    const existingOrder = await Order.findById(id);
+    if (!existingOrder) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+    if (user.role === 'shop_owner' && existingOrder.shopId?.toString() !== user.shopId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const order = await Order.findByIdAndUpdate(id, { status }, { new: true });

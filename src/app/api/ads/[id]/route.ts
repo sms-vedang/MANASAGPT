@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import Ad from '@/models/Ad';
 
 export async function PATCH(
@@ -7,6 +8,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
@@ -25,6 +29,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const { id } = await params;
     const ad = await Ad.findByIdAndDelete(id);

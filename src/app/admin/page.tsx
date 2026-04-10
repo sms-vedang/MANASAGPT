@@ -63,9 +63,13 @@ export default function AdminPage() {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch('/api/auth/check');
+      const response = await fetch('/api/auth/check', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
+        if (data.user?.role !== 'admin') {
+          router.push(data.user?.role === 'shop_owner' ? '/shop-owner' : '/admin/login');
+          return;
+        }
         setUser(data.user);
       } else {
         router.push('/admin/login');

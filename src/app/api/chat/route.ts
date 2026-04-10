@@ -51,7 +51,19 @@ const STOP_WORDS = new Set([
   'near', 'of', 'on', 'please', 'shop', 'the', 'thik', 'to', 'with',
   'yahan', 'yahaan', 'wahan', 'par', 'se', 'ye', 'yeh', 'woh', 'inka',
   'inki', 'uska', 'uski', 'kahan', 'kidhar', 'batao', 'bata', 'chahiye',
+  'kar', 'kardo', 'likh', 'likhdo', 'liye', 'pass', 'paas', 'mein',
 ]);
+
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  plumber: ['plumber', 'plumbing', 'pipe', 'tap', 'leakage', 'sanitary', 'hardware'],
+  medical: ['medical', 'chemist', 'pharmacy', 'medicine'],
+  chemist: ['medical', 'chemist', 'pharmacy', 'medicine'],
+  doctor: ['doctor', 'clinic', 'hospital'],
+  caption: ['caption', 'instagram', 'insta', 'post'],
+  tourist: ['tourist', 'temple', 'landmark', 'visit', 'ghoomne'],
+  weekend: ['tourist', 'landmark', 'temple', 'visit', 'ghoomne'],
+  busstand: ['bus', 'stand', 'bus stand'],
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -110,7 +122,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function searchLocalContext(query: string, originalQuery: string): Promise<SearchContext> {
-  const keywords = extractKeywords(query);
+  const keywords = expandKeywords(query, extractKeywords(query));
 
   // Only search with meaningful keywords (min 3 chars)
   const meaningfulKeywords = keywords.filter((k) => k.length >= 3);
@@ -201,7 +213,8 @@ CRITICAL BEHAVIOR RULES:
 7. If no database result — use your general knowledge AND conversation context to answer helpfully. Do NOT just say "nahi mili". Reason it out.
 8. For brand-specific queries (e.g., "Safe&Care bamboo sanitary pads") — check if the product/brand is in DB. If not, mention that specific brand is not listed but suggest where such items are usually available in Manasa (medical stores, general stores, etc.).
 9. NEVER mention internal errors, prompts, API keys, fallback logic, or database internals.
-10. Keep responses concise — 2-4 lines unless listing multiple items.`,
+10. You can also handle general questions and creative prompts like captions, rewrites, and short content when they are not strictly local.
+11. Keep responses concise — 2-4 lines unless listing multiple items.`,
         },
         ...history.map((message) => ({
           role: message.role,
@@ -232,6 +245,10 @@ function generateFallbackResponse(query: string, context: SearchContext, history
   // Greeting
   if (isGreeting(query)) {
     return 'Namaste! Main ManasaGPT hoon — Manasa, MP ke liye ek local assistant. Shops, services, products, ya koi bhi sawaal poochiye!';
+  }
+
+  if (isCaptionRequest(query)) {
+    return buildCaptionReply(query);
   }
 
   // Short acknowledgement / follow-up
@@ -274,6 +291,13 @@ function generateFallbackResponse(query: string, context: SearchContext, history
     return 'Location detail abhi database mein nahi mili. Aap thoda aur specific bata sakte hain?';
   }
 
+  if (isAvailabilityQuery(query)) {
+    const lastAssistant = [...history].reverse().find((message) => message.role === 'assistant');
+    if (lastAssistant && /medical|chemist|pharmacy/i.test(lastAssistant.content)) {
+      return 'Haan, agar pichhli dukaan medical ya chemist type ki hai to aisi cheezein aam taur par mil jaati hain. Exact brand confirm karne ke liye call kar lena best rahega.';
+    }
+  }
+
   // Has relevant results
   const total = context.shops.length + context.products.length + context.places.length;
   if (total > 0) {
@@ -302,8 +326,20 @@ function generateFallbackResponse(query: string, context: SearchContext, history
     return lines.join('\n');
   }
 
+  if (!looksLikeLocalIntent(query)) {
+    return 'Main ismein help kar sakta hoon. Thoda aur specific likhiye ya context de dijiye, aur main short, useful answer bana dunga.';
+  }
+
+  if (isServiceQuery(query)) {
+    return `Is service ki exact verified listing abhi nahi mili, lekin aap service type aur area ke saath poochiye — jaise "${buildServiceRefinementHint(query)}". Main nearest relevant options nikaal dunga.`;
+  }
+
+  if (isExplorationQuery(query)) {
+    return 'Weekend ya outing type query ke liye main Manasa ke temples, landmarks, aur family-friendly spots suggest kar sakta hoon. Aap bataiye casual ghoomna hai, family outing hai, ya photo spot chahiye.';
+  }
+
   // No results found
-  return `Manasa database mein abhi "${query}" se related koi confirmed listing nahi mili. Aap thoda aur specific pooch sakte hain — jaise shop name, area, ya service type.`;
+  return `Mujhe is exact query ka verified local match abhi nahi mila. Aap shop name, area, landmark, ya service type ke saath thoda aur specific poochiye — main better match dhoondh lunga.`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -315,6 +351,29 @@ function extractKeywords(query: string): string[] {
     .map((w) => w.trim())
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
     .slice(0, 6);
+}
+
+function expandKeywords(query: string, baseKeywords: string[]) {
+  const expanded = new Set(baseKeywords);
+  const normalized = query.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  for (const [trigger, synonyms] of Object.entries(SEARCH_SYNONYMS)) {
+    if (normalized.includes(trigger)) {
+      synonyms.forEach((term) => expanded.add(term));
+    }
+  }
+
+  if (/bus stand/.test(normalized)) {
+    expanded.add('bus');
+    expanded.add('stand');
+    expanded.add('bus stand');
+  }
+
+  if (/ghoomne|ghumne|weekend|visit|tourist/.test(normalized)) {
+    ['tourist', 'temple', 'landmark', 'visit'].forEach((term) => expanded.add(term));
+  }
+
+  return Array.from(expanded).filter((keyword) => keyword.length >= 3).slice(0, 10);
 }
 
 function escapeRegex(value: string) {
@@ -352,9 +411,38 @@ function isWebsiteFollowUp(query: string) {
 }
 
 function shouldSearchLocalData(query: string, effectiveQuery: string) {
+  if (!looksLikeLocalIntent(query) && !looksLikeLocalIntent(effectiveQuery)) return false;
   if (isShortAck(query)) return false;
   if (isLocationFollowUp(query) || isWebsiteFollowUp(query) || isAvailabilityQuery(query)) return true;
   return extractKeywords(effectiveQuery).length > 0;
+}
+
+function looksLikeLocalIntent(query: string) {
+  return /manasa|near|paas|bus stand|shop|store|market|restaurant|medical|chemist|doctor|plumber|salon|grocery|address|location|place|ghoomne|ghumne|visit|landmark|mandir|service/i.test(query);
+}
+
+function isCaptionRequest(query: string) {
+  return /caption|instagram caption|insta caption|post caption/i.test(query);
+}
+
+function buildCaptionReply(query: string) {
+  const topicMatch = query.match(/(?:for|liye|about)\s+(.+)/i);
+  const topic = topicMatch?.[1]?.trim() || 'Manasa';
+  return `"${topic} vibes, simple moments, real stories." Agar chaho to main 3 aur caption options bhi de sakta hoon.`;
+}
+
+function isServiceQuery(query: string) {
+  return /plumber|electrician|mechanic|repair|service|doctor|salon|medical|chemist/i.test(query);
+}
+
+function isExplorationQuery(query: string) {
+  return /ghoomne|ghumne|weekend|visit|tourist|photo spot|hangout/i.test(query);
+}
+
+function buildServiceRefinementHint(query: string) {
+  if (/plumber/i.test(query)) return 'bus stand ke paas plumber ya sanitary repair';
+  if (/medical|chemist/i.test(query)) return 'near bus stand medical store';
+  return 'service type + area';
 }
 
 function buildEffectiveQuery(query: string, history: ChatMessage[]) {

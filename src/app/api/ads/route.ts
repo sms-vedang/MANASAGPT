@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { requireUser } from '@/lib/auth';
 import Ad from '@/models/Ad';
 // Import related models so Mongoose registers them before populate runs
 import '@/models/Shop';
@@ -18,6 +19,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { error } = await requireUser(request, ['admin']);
+    if (error) return error;
+
     await dbConnect();
     const body = await request.json();
     const ad = await Ad.create(body);
