@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -70,10 +70,6 @@ export default function ShopOwnerPage() {
   const [savingShop, setSavingShop] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
 
-  useEffect(() => {
-    void loadDashboard();
-  }, []);
-
   const stats = useMemo(() => {
     const totalProducts = products.length;
     const featuredCount = products.filter((product) => product.featured).length;
@@ -115,7 +111,7 @@ export default function ShopOwnerPage() {
     setProducts(Array.isArray(data) ? data : []);
   };
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
       setPageError('');
@@ -168,7 +164,11 @@ export default function ShopOwnerPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const resetProductForm = () => {
     setProductForm(emptyProductForm);
@@ -399,7 +399,7 @@ export default function ShopOwnerPage() {
                 className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
                   activePanel === item.id
                     ? 'border-[var(--accent)]/30 bg-[var(--accent)]/12 shadow-lg shadow-teal-950/40'
-                    : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]'
+                    : 'border-white/8 bg-white/3 hover:border-white/15 hover:bg-white/[0.06]'
                 }`}
               >
                 <p className="text-sm font-semibold text-white">{item.label}</p>
@@ -506,7 +506,7 @@ export default function ShopOwnerPage() {
                   {products.slice(0, 5).map((product) => (
                     <div
                       key={product._id}
-                      className="flex flex-col gap-3 rounded-[24px] border border-white/8 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-[24px] border border-white/8 bg-white/3 p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
                         <p className="text-base font-semibold text-white">{product.name}</p>
@@ -553,7 +553,7 @@ export default function ShopOwnerPage() {
                   <InfoRow label="Sponsored" value={shop.sponsored ? 'Enabled' : 'Disabled'} />
                 </dl>
 
-                <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                <div className="mt-6 rounded-[24px] border border-white/8 bg-white/3 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Search Tags</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {shop.tags.length > 0 ? (
@@ -711,7 +711,7 @@ export default function ShopOwnerPage() {
                       />
                     </Field>
 
-                    <label className="flex items-center gap-3 rounded-[22px] border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 md:col-span-2">
+                    <label className="flex items-center gap-3 rounded-[22px] border border-white/8 bg-white/3 px-4 py-4 text-sm text-slate-200 md:col-span-2">
                       <input
                         type="checkbox"
                         checked={productForm.featured}
@@ -836,7 +836,7 @@ function MetricCard({
       className={`rounded-[26px] border p-5 ${
         tone === 'warn'
           ? 'border-amber-300/15 bg-amber-400/10'
-          : 'border-white/8 bg-white/[0.03]'
+          : 'border-white/8 bg-white/3'
       }`}
     >
       <p className="text-xs uppercase tracking-[0.24em] text-slate-400">{label}</p>
@@ -868,7 +868,7 @@ function Field({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+    <div className="rounded-[20px] border border-white/8 bg-white/3 p-4">
       <dt className="text-xs uppercase tracking-[0.22em] text-slate-500">{label}</dt>
       <dd className="mt-2 text-sm leading-6 text-slate-200">{value}</dd>
     </div>

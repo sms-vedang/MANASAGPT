@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function Login() {
@@ -12,20 +12,20 @@ export default function Login() {
 
   useEffect(() => {
     // Check if already logged in
-    checkAuth();
-  }, []);
+    void checkAuth();
+  }, [checkAuth]);
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/check');
       if (response.ok) {
         const data = await response.json();
         router.push(data.user?.role === 'shop_owner' ? '/shop-owner' : '/admin');
       }
-    } catch (error) {
+    } catch {
       // Not logged in
     }
-  };
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +50,7 @@ export default function Login() {
         const data = await response.json();
         setError(data.error || 'Login failed');
       }
-    } catch (error) {
+    } catch {
       setError('Network error');
     } finally {
       setLoading(false);
