@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 interface Message {
@@ -51,7 +51,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [ads, setAds] = useState<Ad[]>([]);
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [slideDir, setSlideDir] = useState<'left' | 'right'>('left');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,21 +69,39 @@ export default function Home() {
 
   const activeAds = useMemo(() => {
     const now = new Date();
-    return ads.filter((ad) => {
-      const starts = new Date(ad.startDate) <= now;
-      const ends = !ad.endDate || new Date(ad.endDate) >= now;
-      return starts && ends;
-    });
+    return ads
+      .filter((ad) => {
+        const starts = new Date(ad.startDate) <= now;
+        const ends = !ad.endDate || new Date(ad.endDate) >= now;
+        return starts && ends;
+      })
+      .sort((a, b) => b.priority - a.priority);
   }, [ads]);
 
-  const bannerAd = activeAds
-    .filter((ad) => ad.type === 'banner')
-    .sort((a, b) => b.priority - a.priority)[0];
+  const goToSlide = useCallback(
+    (dir: 'left' | 'right') => {
+      if (isAnimating || activeAds.length <= 1) return;
+      setSlideDir(dir);
+      setIsAnimating(true);
+      setTimeout(() => {
+        setSlideIndex((prev) =>
+          dir === 'left'
+            ? (prev + 1) % activeAds.length
+            : (prev - 1 + activeAds.length) % activeAds.length
+        );
+        setIsAnimating(false);
+      }, 350);
+    },
+    [isAnimating, activeAds.length]
+  );
 
-  const sponsoredAds = activeAds
-    .filter((ad) => ad.type !== 'banner')
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 2);
+  useEffect(() => {
+    if (activeAds.length <= 1 || isPaused) return;
+    autoPlayRef.current = setInterval(() => goToSlide('left'), 4000);
+    return () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
+  }, [activeAds.length, isPaused, goToSlide]);
+
+  const currentAd = activeAds[slideIndex] ?? null;
 
   const fetchAds = async () => {
     try {
@@ -195,43 +218,134 @@ export default function Home() {
           </div>
         </header>
 
-        {bannerAd && (
-          <section className="mb-4 overflow-hidden rounded-[28px] border border-white/10 bg-[#132038]">
-            <div className="grid items-center gap-4 md:grid-cols-[1.2fr_0.8fr]">
-              <div className="p-6">
-                <p className="mb-2 text-xs uppercase tracking-[0.22em] text-blue-200/80">Featured Banner</p>
-                <h2 className="text-2xl font-semibold text-white">{bannerAd.content}</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  ManasaGPT par highlighted city promotion ab live hai. Admin panel se banner content aur priority update kar sakte ho.
-                </p>
-              </div>
-              {bannerAd.image && (
-                bannerAd.image.startsWith('/') ? (
-                  <div className="relative h-56 w-full md:h-full">
-                    <Image src={bannerAd.image} alt={bannerAd.content} fill className="object-cover" priority sizes="(max-width: 768px) 100vw, 40vw" />
+        {activeAds.length > 0 && (
+          <section
+            className="relative mb-4 overflow-hidden rounded-[28px] border border-white/10 bg-[#132038] select-none"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+          >
+            {/* Slide content */}
+            <div
+              className="transition-all duration-350 ease-in-out"
+              style={{
+                opacity: isAnimating ? 0 : 1,
+                transform: isAnimating
+                  ? `translateX(${slideDir === 'left' ? '-32px' : '32px'})`
+                  : 'translateX(0)',
+                transition: 'opacity 0.35s ease, transform 0.35s ease',
+              }}
+            >
+              {currentAd && (
+                <div className="grid items-center gap-0 md:grid-cols-[1.2fr_0.8fr]">
+                  <div className="p-6 pb-10">
+                    {/* Type label */}
+                    <span
+                      className={`inline-block mb-3 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                        currentAd.type === 'banner'
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : currentAd.type === 'sponsored'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {currentAd.type === 'banner'
+                        ? '✦ Featured Banner'
+                        : currentAd.type === 'sponsored'
+                        ? '★ Sponsored Shop'
+                        : '🛒 Featured Product'}
+                    </span>
+
+                    <h2 className="text-2xl font-semibold text-white leading-snug">
+                      {currentAd.content}
+                    </h2>
+
+                    {(currentAd.shopId?.name || currentAd.productId?.name) && (
+                      <p className="mt-2 text-sm text-slate-300">
+                        {currentAd.shopId?.name || currentAd.productId?.name}
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={bannerAd.image} alt={bannerAd.content} className="h-56 w-full object-cover md:h-full" />
-                )
+
+                  {/* Image side */}
+                  {currentAd.image ? (
+                    currentAd.image.startsWith('/') ? (
+                      <div className="relative h-52 w-full md:h-48">
+                        <Image
+                          src={currentAd.image}
+                          alt={currentAd.content}
+                          fill
+                          className="object-cover"
+                          priority
+                          sizes="(max-width: 768px) 100vw, 40vw"
+                        />
+                      </div>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={currentAd.image}
+                        alt={currentAd.content}
+                        className="h-52 w-full object-cover md:h-48"
+                      />
+                    )
+                  ) : (
+                    /* Placeholder gradient when no image */
+                    <div
+                      className={`hidden md:flex h-48 w-full items-center justify-center text-5xl ${
+                        currentAd.type === 'banner'
+                          ? 'bg-gradient-to-br from-blue-600/30 to-indigo-800/20'
+                          : currentAd.type === 'sponsored'
+                          ? 'bg-gradient-to-br from-amber-600/20 to-orange-800/10'
+                          : 'bg-gradient-to-br from-emerald-600/20 to-teal-800/10'
+                      }`}
+                    >
+                      {currentAd.type === 'banner' ? '🏙️' : currentAd.type === 'sponsored' ? '🏪' : '📦'}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          </section>
-        )}
 
-        {sponsoredAds.length > 0 && (
-          <section className="mb-4 grid gap-3 md:grid-cols-2">
-            {sponsoredAds.map((ad) => (
-              <div key={ad._id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                  {ad.type === 'sponsored' ? 'Sponsored Shop' : 'Featured Product'}
-                </p>
-                <p className="mt-2 text-base font-semibold text-white">{ad.content}</p>
-                <p className="mt-1 text-sm text-slate-300">
-                  {ad.shopId?.name || ad.productId?.name || 'Promotion active'}
-                </p>
+            {/* Prev / Next buttons */}
+            {activeAds.length > 1 && (
+              <>
+                <button
+                  onClick={() => goToSlide('right')}
+                  aria-label="Previous slide"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-white/20 hover:scale-110"
+                >
+                  ‹
+                </button>
+                <button
+                  onClick={() => goToSlide('left')}
+                  aria-label="Next slide"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-white/20 hover:scale-110"
+                >
+                  ›
+                </button>
+              </>
+            )}
+
+            {/* Dot indicators */}
+            {activeAds.length > 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {activeAds.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      if (!isAnimating && i !== slideIndex) {
+                        setSlideDir(i > slideIndex ? 'left' : 'right');
+                        setIsAnimating(true);
+                        setTimeout(() => { setSlideIndex(i); setIsAnimating(false); }, 350);
+                      }
+                    }}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      i === slideIndex ? 'w-5 bg-white' : 'w-1.5 bg-white/30'
+                    }`}
+                    aria-label={`Go to slide ${i + 1}`}
+                  />
+                ))}
               </div>
-            ))}
+            )}
           </section>
         )}
 
