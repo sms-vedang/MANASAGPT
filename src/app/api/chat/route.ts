@@ -81,9 +81,14 @@ export async function POST(request: NextRequest) {
 
     await Query.create({ userQuery: query });
 
+    const shouldUseLocalSearch = shouldSearchLocalData(query, effectiveQuery);
+    const context = shouldUseLocalSearch
+      ? await searchLocalContext(effectiveQuery, query)
+      : { shops: [], products: [], places: [] };
+
     // ── Order Intent ─────────────────────────────────────────────────────────
     if (isOrderIntent(query)) {
-      const lastProduct = extractLastProduct(history);
+      const lastProduct = extractLastProduct(history, context);
       if (lastProduct) {
         return NextResponse.json({
           response: `Bilkul! Main "${lastProduct.productName}" ka order place karne mein help karta hoon. Neeche form fill karein 👇`,
@@ -96,11 +101,6 @@ export async function POST(request: NextRequest) {
       });
     }
     // ─────────────────────────────────────────────────────────────────────────
-
-    const shouldUseLocalSearch = shouldSearchLocalData(query, effectiveQuery);
-    const context = shouldUseLocalSearch
-      ? await searchLocalContext(effectiveQuery, query)
-      : { shops: [], products: [], places: [] };
 
     const response = await generateAssistantResponse(query, effectiveQuery, context, history);
 
@@ -357,10 +357,10 @@ function generateFallbackResponse(query: string, context: SearchContext, history
 function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
-    .split(/[^a-z0-9]+/i)
+    .split(/[^a-z0-9\u0900-\u097F]+/i) // Support Devnagari characters too
     .map((w) => w.trim())
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
-    .slice(0, 6);
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w))
+    .slice(0, 10);
 }
 
 function expandKeywords(query: string, baseKeywords: string[]) {
@@ -592,19 +592,39 @@ type OrderInit = {
   shopId?: string;
 };
 
-function extractLastProduct(history: ChatMessage[]): OrderInit | null {
-  // Scan assistant messages in reverse for a product line like:
-  // "🛒 Product Name — ₹120 (at Shop Name)"
+function extractLastProduct(history: ChatMessage[], context?: SearchContext): OrderInit | null {
+  // Scan assistant messages in reverse for a product line
   const assistantMessages = [...history].reverse().filter((m) => m.role === 'assistant');
 
   for (const msg of assistantMessages) {
     // Match pattern: 🛒 Name — ₹price (at Shop)
     const productLine = /🛒\s+(.+?)\s+[—–]\s+₹(\d+(?:\.\d+)?)(?:\s+\(at\s+(.+?)\))?/i.exec(msg.content);
     if (productLine) {
+      const productName = productLine[1].trim();
+      const productPrice = parseFloat(productLine[2]);
+      const shopName = productLine[3]?.trim() || 'Unknown Shop';
+
+      // Try to find IDs in current search context if available
+      let productId: string | undefined;
+      let shopId: string | undefined;
+
+      if (context?.products) {
+        const found = context.products.find(p => 
+          p.name.toLowerCase() === productName.toLowerCase() || 
+          productName.toLowerCase().includes(p.name.toLowerCase())
+        );
+        if (found) {
+          productId = found._id;
+          shopId = typeof found.shopId === 'object' ? found.shopId?._id : found.shopId;
+        }
+      }
+
       return {
-        productName: productLine[1].trim(),
-        productPrice: parseFloat(productLine[2]),
-        shopName: productLine[3]?.trim() || 'Unknown Shop',
+        productName,
+        productPrice,
+        shopName,
+        productId,
+        shopId,
       };
     }
 
