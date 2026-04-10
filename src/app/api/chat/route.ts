@@ -15,12 +15,15 @@ type ShopResult = {
   name: string;
   category: string;
   address?: string;
+  phone?: string;
+  website?: string;
 };
 
 type ProductShopRef = {
   name?: string;
   address?: string;
   phone?: string;
+  website?: string;
 };
 
 type ProductResult = {
@@ -32,6 +35,8 @@ type ProductResult = {
 type PlaceResult = {
   name: string;
   location: string;
+  description?: string;
+  website?: string;
 };
 
 type SearchContext = {
@@ -41,32 +46,11 @@ type SearchContext = {
 };
 
 const STOP_WORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'best',
-  'bhi',
-  'bolo',
-  'do',
-  'for',
-  'hai',
-  'in',
-  'ka',
-  'kya',
-  'ki',
-  'ko',
-  'me',
-  'milega',
-  'near',
-  'of',
-  'on',
-  'please',
-  'shop',
-  'the',
-  'thik',
-  'to',
-  'with',
+  'a', 'an', 'and', 'are', 'best', 'bhi', 'bolo', 'do', 'for', 'hai',
+  'in', 'ka', 'kya', 'kyaa', 'ki', 'ko', 'me', 'milega', 'milenge',
+  'near', 'of', 'on', 'please', 'shop', 'the', 'thik', 'to', 'with',
+  'yahan', 'yahaan', 'wahan', 'par', 'se', 'ye', 'yeh', 'woh', 'inka',
+  'inki', 'uska', 'uski', 'kahan', 'kidhar', 'batao', 'bata', 'chahiye',
 ]);
 
 export async function POST(request: NextRequest) {
@@ -86,7 +70,10 @@ export async function POST(request: NextRequest) {
     await Query.create({ userQuery: query });
 
     const shouldUseLocalSearch = shouldSearchLocalData(query, effectiveQuery);
-    const context = shouldUseLocalSearch ? await searchLocalContext(effectiveQuery, query) : { shops: [], products: [], places: [] };
+    const context = shouldUseLocalSearch
+      ? await searchLocalContext(effectiveQuery, query)
+      : { shops: [], products: [], places: [] };
+
     const response = await generateAssistantResponse(query, effectiveQuery, context, history);
 
     return NextResponse.json({
@@ -108,19 +95,20 @@ export async function POST(request: NextRequest) {
 
 async function searchLocalContext(query: string, originalQuery: string): Promise<SearchContext> {
   const keywords = extractKeywords(query);
-  const searchTerms = [query, ...keywords].filter(Boolean);
 
-  if (searchTerms.length === 0) {
+  // Only search with meaningful keywords (min 3 chars)
+  const meaningfulKeywords = keywords.filter((k) => k.length >= 3);
+  if (meaningfulKeywords.length === 0) {
     return { shops: [], products: [], places: [] };
   }
 
-  const regexes = searchTerms.map((term) => new RegExp(escapeRegex(term), 'i'));
+  // Use individual keyword regexes, not the full query string as one regex
+  const regexes = meaningfulKeywords.map((term) => new RegExp(`\\b${escapeRegex(term)}`, 'i'));
 
   const shopConditions = regexes.flatMap((regex) => [
     { name: regex },
     { category: regex },
     { tags: regex },
-    { address: regex },
   ]);
 
   const productConditions = regexes.flatMap((regex) => [
@@ -132,56 +120,72 @@ async function searchLocalContext(query: string, originalQuery: string): Promise
     { name: regex },
     { type: regex },
     { description: regex },
-    { location: regex },
   ]);
 
   const prefersLocation = /kahan|kidhar|where|location|address|kahaa/i.test(originalQuery);
+  const prefersWebsite = /website|site|link|online|url/i.test(originalQuery);
 
   const [shops, products, places] = await Promise.all([
     Shop.find({ $or: shopConditions })
       .sort({ sponsored: -1, verified: -1, rating: -1, priorityScore: -1 })
-      .limit(6)
+      .limit(5)
       .lean<ShopResult[]>(),
     Product.find({ $or: productConditions })
-      .populate('shopId', 'name address phone')
+      .populate('shopId', 'name address phone website')
       .sort({ featured: -1, price: 1 })
-      .limit(6)
+      .limit(5)
       .lean<ProductResult[]>(),
     Place.find({ $or: placeConditions })
-      .limit(6)
+      .limit(5)
       .lean<PlaceResult[]>(),
   ]);
 
   return {
     shops,
-    products: prefersLocation ? products.slice(0, 1) : products,
-    places: prefersLocation ? places.concat([]) : places,
+    products: prefersLocation && !prefersWebsite ? products.slice(0, 1) : products,
+    places,
   };
 }
 
-async function generateAssistantResponse(query: string, effectiveQuery: string, context: SearchContext, history: ChatMessage[]) {
+async function generateAssistantResponse(
+  query: string,
+  effectiveQuery: string,
+  context: SearchContext,
+  history: ChatMessage[]
+) {
   if (!process.env.GROQ_API_KEY) {
     console.warn('GROQ_API_KEY is missing. Returning local fallback response.');
-    return generateFallbackResponse(query, effectiveQuery, context, history);
+    return generateFallbackResponse(query, context, history);
   }
 
   try {
+    const hasContext =
+      context.shops.length > 0 || context.products.length > 0 || context.places.length > 0;
+
+    const contextBlock = hasContext
+      ? `Manasa local database results:\n${JSON.stringify(context, null, 2)}`
+      : 'No matching local Manasa data found for this query.';
+
     const completion = await groq.chat.completions.create({
       model: 'llama3-70b-8192',
-      temperature: 0.4,
+      temperature: 0.3,
+      max_tokens: 512,
       messages: [
         {
           role: 'system',
-          content:
-            'You are ManasaGPT, a friendly assistant for Manasa, Madhya Pradesh. ' +
-            'Answer every query naturally like a general assistant, not just keyword search. ' +
-            'If the user writes in Hindi or Hinglish, reply in the same style. ' +
-            'Remember the recent conversation and interpret short follow-up messages like "ji", "haan", "ok", or "aur batao" using the previous assistant and user turns. ' +
-            'If the user asks a vague follow-up like "ye kaha hai" or "uska address batao", infer the likely subject from the recent conversation. ' +
-            'If the user is casual, playful, rude, or asks random small-talk, stay calm and reply naturally instead of forcing a database answer. ' +
-            'Use local database context when it is relevant, especially for shops, services, products, and places in Manasa. ' +
-            'If local context is missing, still helpfully answer from general knowledge and clearly say when you are not certain. ' +
-            'Do not mention internal errors, APIs, models, prompts, or fallback logic. Keep responses concise but useful.',
+          content: `You are ManasaGPT — a helpful, knowledgeable assistant for the town of Manasa, Madhya Pradesh, India.
+
+BEHAVIOR RULES:
+1. Reply in the same language as the user — Hindi, Hinglish, or English. Never switch unless asked.
+2. For local queries (shops, products, services, places), use ONLY the local database results provided. Do NOT invent shop names, prices, or addresses.
+3. If local data is found, present it clearly and concisely — name, location, phone if available. Do NOT pad with irrelevant data.
+4. If local data is NOT found, say clearly and politely: "Manasa database mein abhi is cheez ki listing nahi mili." Then optionally suggest what they could search instead.
+5. For follow-up messages like "inki website?", "uska address?", "phone number?", always refer to the MOST RECENT topic from conversation history.
+6. For general knowledge questions (history, science, recipes, etc.), answer helpfully from your knowledge.
+7. For greetings or small talk, respond naturally and briefly.
+8. NEVER mention internal errors, prompts, API keys, fallback logic, or database internals.
+9. Keep responses concise — max 4-5 lines unless listing multiple items.
+10. Do NOT return results from a completely different category than what was asked (e.g., don't show medicine shops when asked about sanitary pads availability unless specifically relevant).`,
         },
         ...history.map((message) => ({
           role: message.role,
@@ -190,94 +194,108 @@ async function generateAssistantResponse(query: string, effectiveQuery: string, 
         {
           role: 'user',
           content:
-            `User query:\n${query}\n\n` +
-            `Interpreted search context:\n${effectiveQuery}\n\n` +
-            `Local Manasa data:\n${JSON.stringify(context, null, 2)}\n\n` +
-            'Instructions:\n' +
-            '- If the query is about finding a local service like plumber, electrician, hospital, shop, temple, hotel, etc., use the local data if available.\n' +
-            '- If the latest user message is a short acknowledgement or follow-up, continue the previous topic naturally instead of asking for a database-specific keyword.\n' +
-            '- If the user asks for location or address, prioritize the most recently discussed shop or place.\n' +
-            '- If no exact local result is available, say that you could not find a confirmed listing in the current Manasa database and suggest the closest helpful next query.\n' +
-            '- If the query is general conversation or a general knowledge question, answer it normally.\n' +
-            '- Prefer short paragraphs or a compact list when recommending places.\n' +
-            '- Never say "based on the prompt" or "generated without AI due to error".',
+            `User's message: "${query}"\n\n` +
+            `Interpreted search context: "${effectiveQuery}"\n\n` +
+            `${contextBlock}\n\n` +
+            `Answer the user's message based on the above. Use local data only if directly relevant to what was asked.`,
         },
       ],
     });
 
     const content = completion.choices[0]?.message?.content?.trim();
-    return content || generateFallbackResponse(query, effectiveQuery, context, history);
+    return content || generateFallbackResponse(query, context, history);
   } catch (error) {
     console.error('Assistant response failed:', error);
-    return generateFallbackResponse(query, effectiveQuery, context, history);
+    return generateFallbackResponse(query, context, history);
   }
 }
 
-function generateFallbackResponse(query: string, effectiveQuery: string, context: SearchContext, history: ChatMessage[]) {
-  const totalMatches = context.shops.length + context.products.length + context.places.length;
-
+function generateFallbackResponse(query: string, context: SearchContext, history: ChatMessage[]) {
+  // Greeting
   if (isGreeting(query)) {
-    return 'Hello! Main ManasaGPT hoon. Aap Manasa ke shops, services, products, places, ya general sawaal bhi pooch sakte hain.';
+    return 'Namaste! Main ManasaGPT hoon — Manasa, MP ke liye ek local assistant. Shops, services, products, ya koi bhi sawaal poochiye!';
   }
 
-  if (isShortConversationalReply(query)) {
-    const lastAssistantMessage = [...history].reverse().find((message) => message.role === 'assistant');
-    if (lastAssistantMessage) {
-      return 'Ji, agar aap chaho to main isi topic par aur detail de sakta hoon, best option shortlist kar sakta hoon, ya nearby alternatives bhi bata sakta hoon.';
+  // Short acknowledgement / follow-up
+  if (isShortAck(query)) {
+    const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant');
+    if (lastAssistant) {
+      return 'Aur kuch chahiye aapko? Koi bhi sawaal ho toh pooch sakte hain.';
     }
-
-    return 'Ji boliye, main help ke liye yahin hoon. Aap apna next sawaal pooch sakte hain.';
+    return 'Ji boliye, main help ke liye yahin hoon.';
   }
 
-  if (isCasualGeneralQuery(query) && totalMatches === 0) {
-    return 'Main casual ya random baat bhi handle kar sakta hoon. Agar aap Manasa ke baare me poochna chaho to main shops, services, places, aur recommendations me help kar dunga.';
+  // Website follow-up
+  if (isWebsiteFollowUp(query)) {
+    const shop = context.shops.find(
+      (s): s is ShopResult & { website: string } => typeof s.website === 'string' && s.website.length > 0
+    );
+    if (shop) {
+      return `${shop.name} ki website: ${shop.website}`;
+    }
+    const place = context.places.find(
+      (p): p is PlaceResult & { website: string } => typeof p.website === 'string' && p.website.length > 0
+    );
+    if (place) {
+      return `${place.name} ki website: ${place.website}`;
+    }
+    // Check from history for last mentioned entity
+    return 'Mujhe is listing ki website abhi database mein nahi mili. Aap directly Google par search kar sakte hain.';
   }
 
-  if (isLocationFollowUp(query) && context.shops.length > 0) {
-    const shop = context.shops[0];
-    return `${shop.name} ${shop.address ? shop.address : 'Manasa me listed hai'}. Agar chaho to main nearby alternatives bhi bata sakta hoon.`;
+  // Location follow-up
+  if (isLocationFollowUp(query)) {
+    if (context.shops.length > 0) {
+      const shop = context.shops[0];
+      return `${shop.name} — ${shop.address || 'Manasa mein listed hai'}${shop.phone ? `, Ph: ${shop.phone}` : ''}.`;
+    }
+    if (context.places.length > 0) {
+      const place = context.places[0];
+      return `${place.name} — ${place.location}.`;
+    }
+    return 'Location detail abhi database mein nahi mili. Aap thoda aur specific bata sakte hain?';
   }
 
-  if (isLocationFollowUp(query) && context.places.length > 0) {
-    const place = context.places[0];
-    return `${place.name} ka location ${place.location} hai. Agar chaho to main wahan tak pahunchne ka easy route bhi suggest kar sakta hoon.`;
-  }
+  // Has relevant results
+  const total = context.shops.length + context.products.length + context.places.length;
+  if (total > 0) {
+    const lines: string[] = [];
 
-  if (totalMatches > 0) {
-    const lines: string[] = ['Mujhe aapki query se kuch relevant results mile hain:'];
-
-    context.shops.slice(0, 3).forEach((shop, index) => {
-      lines.push(`${index + 1}. ${shop.name} - ${shop.category}${shop.address ? `, ${shop.address}` : ''}`);
+    context.shops.slice(0, 3).forEach((shop, i) => {
+      lines.push(
+        `${i + 1}. **${shop.name}** (${shop.category})${shop.address ? ` — ${shop.address}` : ''}${shop.phone ? ` | 📞 ${shop.phone}` : ''}`
+      );
     });
 
     context.products.slice(0, 2).forEach((product) => {
       const shopName =
         product.shopId && typeof product.shopId === 'object' && 'name' in product.shopId
           ? product.shopId.name
-          : 'Unknown shop';
-      lines.push(`Product: ${product.name} - Rs.${product.price} at ${shopName}`);
+          : null;
+      lines.push(
+        `🛒 ${product.name} — ₹${product.price}${shopName ? ` (at ${shopName})` : ''}`
+      );
     });
 
     context.places.slice(0, 2).forEach((place) => {
-      lines.push(`Place: ${place.name} - ${place.location}`);
+      lines.push(`📍 ${place.name} — ${place.location}`);
     });
 
-    lines.push('Agar chaho to main inme se best option shortlist bhi kar sakta hoon.');
     return lines.join('\n');
   }
 
-  return (
-    `Main "${query}" par help kar sakta hoon, lekin current Manasa database me mujhe direct confirmed match nahi mila. ` +
-    `Aap thoda aur specific pooch sakte hain, jaise area, service type, nearby landmark, ya "${effectiveQuery}" ke baare me aur detail.`
-  );
+  // No results found
+  return `Manasa database mein abhi "${query}" se related koi confirmed listing nahi mili. Aap thoda aur specific pooch sakte hain — jaise shop name, area, ya service type.`;
 }
 
-function extractKeywords(query: string) {
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
     .split(/[^a-z0-9]+/i)
-    .map((word) => word.trim())
-    .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
+    .map((w) => w.trim())
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
     .slice(0, 6);
 }
 
@@ -286,102 +304,89 @@ function escapeRegex(value: string) {
 }
 
 function isGreeting(query: string) {
-  const lowerQuery = query.toLowerCase();
-  return ['hi', 'hello', 'hey', 'namaste', 'bro', 'good morning', 'good evening'].some((word) =>
-    lowerQuery.includes(word)
+  return /^(hi|hello|hey|namaste|namaskar|bro|good morning|good evening|good night|sup|yo)\b/i.test(
+    query.trim()
   );
 }
 
-function isShortConversationalReply(query: string) {
+function isShortAck(query: string) {
   const normalized = query.toLowerCase().trim();
   return [
-    'ji',
-    'haan',
-    'han',
-    'hmm',
-    'hm',
-    'ok',
-    'okay',
-    'acha',
-    'achha',
-    'theek hai',
-    'thik hai',
-    'thanks',
-    'thank you',
-    'aur batao',
+    'ji', 'haan', 'han', 'hmm', 'hm', 'ok', 'okay', 'ok', 'acha', 'achha',
+    'theek hai', 'thik hai', 'thanks', 'thank you', 'shukriya', 'dhanyawad',
+    'aur batao', 'zyada batao', 'aage batao',
   ].includes(normalized);
 }
 
 function isLocationFollowUp(query: string) {
-  return /kahan|kidhar|where|address|location|kahaa/i.test(query);
+  return /kahan|kidhar|where|address|location|kahaa|ka pata|ko kaise/i.test(query);
 }
 
-function isCasualGeneralQuery(query: string) {
-  return /mazak|joke|timepass|random|bakwas|faltu|aisi|waisi|funny|meme/i.test(query);
+function isWebsiteFollowUp(query: string) {
+  return /website|site|link|online|url|web par|inki site|uski site|inka link/i.test(query);
 }
 
 function shouldSearchLocalData(query: string, effectiveQuery: string) {
-  if (isShortConversationalReply(query)) {
-    return false;
-  }
-
-  if (isLocationFollowUp(query)) {
-    return true;
-  }
-
+  if (isShortAck(query)) return false;
+  if (isLocationFollowUp(query) || isWebsiteFollowUp(query)) return true;
   return extractKeywords(effectiveQuery).length > 0;
 }
 
 function buildEffectiveQuery(query: string, history: ChatMessage[]) {
-  if (!isLocationFollowUp(query) && !isShortConversationalReply(query)) {
-    return query;
+  const isFollowUp = isLocationFollowUp(query) || isWebsiteFollowUp(query) || isShortAck(query);
+
+  if (!isFollowUp) return query;
+
+  // Try to extract last entity from history
+  const lastEntity = extractLastEntity(history);
+  if (lastEntity) {
+    return isLocationFollowUp(query)
+      ? `${lastEntity} location address`
+      : isWebsiteFollowUp(query)
+        ? `${lastEntity} website`
+        : lastEntity;
   }
 
-  const lastAssistantEntity = extractLastEntity(history);
-  if (lastAssistantEntity && isLocationFollowUp(query)) {
-    return `${lastAssistantEntity} location`;
-  }
-
-  const lastMeaningfulUserQuery = [...history]
+  // Fall back to last meaningful user message
+  const lastMeaningfulUser = [...history]
     .reverse()
-    .find((message) => message.role === 'user' && !isShortConversationalReply(message.content));
+    .find((m) => m.role === 'user' && !isShortAck(m.content));
 
-  return lastMeaningfulUserQuery?.content || query;
+  return lastMeaningfulUser?.content || query;
 }
 
-function extractLastEntity(history: ChatMessage[]) {
-  const lastAssistantMessage = [...history].reverse().find((message) => message.role === 'assistant');
-  if (!lastAssistantMessage) {
-    return '';
-  }
+function extractLastEntity(history: ChatMessage[]): string {
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant');
+  if (!lastAssistant) return '';
 
   const patterns = [
-    /\d+\.\s(.+?)\s-\s/g,
-    /Place:\s(.+?)\s-\s/g,
-    /Product:\s(.+?)\s-\s/g,
+    /\*\*(.+?)\*\*/,          // bold markdown entity
+    /\d+\.\s(.+?)\s[-—]/,    // numbered list item
+    /📍\s(.+?)\s[-—]/,       // place entry
+    /🛒\s(.+?)\s[-—]/,       // product entry
+    /Place:\s(.+?)\s[-—]/,
+    /Product:\s(.+?)\s[-—]/,
   ];
 
   for (const pattern of patterns) {
-    const match = pattern.exec(lastAssistantMessage.content);
-    if (match?.[1]) {
-      return match[1].trim();
-    }
+    const match = pattern.exec(lastAssistant.content);
+    if (match?.[1]) return match[1].trim();
   }
 
   return '';
 }
 
 function normalizeHistory(rawHistory: unknown): ChatMessage[] {
-  if (!Array.isArray(rawHistory)) {
-    return [];
-  }
+  if (!Array.isArray(rawHistory)) return [];
 
   return rawHistory
-    .filter((item): item is { role?: unknown; content?: unknown } => typeof item === 'object' && item !== null)
+    .filter((item): item is { role?: unknown; content?: unknown } =>
+      typeof item === 'object' && item !== null
+    )
     .map((item) => ({
       role: (item.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
       content: typeof item.content === 'string' ? item.content.trim() : '',
     }))
     .filter((item) => item.content.length > 0)
-    .slice(-8);
+    .slice(-10); // Keep last 10 messages for better context
 }
