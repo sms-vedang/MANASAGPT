@@ -375,7 +375,7 @@ export default function ShopManagement() {
                   <input type="number" style={s.input} min="0" max="5" step="0.1" value={formData.rating} onChange={e => setFormData(p => ({ ...p, rating: parseFloat(e.target.value) }))} />
                 </FormField>
                 <FormField label="Priority Score">
-                  <input type="number" style={s.input} value={formData.priorityScore} onChange={e => setFormData(p => ({ ...p, priorityScore: parseInt(e.target.value) || 0 })} />
+                  <input type="number" style={s.input} value={formData.priorityScore} onChange={e => setFormData(p => ({ ...p, priorityScore: parseInt(e.target.value) || 0 }))} />
                   <span style={s.fieldHint}>Higher score = shown first in AI responses</span>
                 </FormField>
                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
