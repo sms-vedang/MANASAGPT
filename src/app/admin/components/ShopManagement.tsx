@@ -567,11 +567,12 @@ export default function ShopManagement() {
   );
 }
 
-function FormField({ label, children, span2 }: { label: string; children: React.ReactNode; span2?: boolean }) {
+function FormField({ label, children, span2, textHint }: { label: string; children: React.ReactNode; span2?: boolean; textHint?: string }) {
   return (
     <div style={{ gridColumn: span2 ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 6 }}>
       <label style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</label>
       {children}
+      {textHint && <span style={{ color: '#64748b', fontSize: 11, marginTop: -2 }}>{textHint}</span>}
     </div>
   );
 }
