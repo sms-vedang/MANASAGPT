@@ -509,7 +509,7 @@ function isExplorationQuery(query: string) {
 }
 
 function buildServiceRefinementHint(query: string) {
-  if (/plumber/i.test(query)) return 'bus stand ke paas plumber ya sanitary repair';
+  if (/plumber/i.test(query)) return 'bus stand ke paas plumber ya pipe fitting ya water tank repair';
   if (/medical|chemist/i.test(query)) return 'near bus stand medical store';
   return 'service type + area';
 }

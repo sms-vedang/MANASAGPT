@@ -19,6 +19,7 @@ export interface IShop extends Document {
   website?: string;
   rating: number;
   tags: string[];
+  providedServices?: string[];
   sponsored: boolean;
   priorityScore: number;
   verified: boolean;
@@ -53,6 +54,7 @@ const ShopSchema: Schema = new Schema(
     website: { type: String },
     rating: { type: Number, default: 0 },
     tags: [{ type: String }],
+    providedServices: [{ type: String }],
     sponsored: { type: Boolean, default: false },
     priorityScore: { type: Number, default: 0 },
     verified: { type: Boolean, default: false },

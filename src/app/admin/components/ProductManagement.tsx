@@ -6,7 +6,7 @@ interface Product {
   _id: string;
   name: string;
   price: number;
-  shopId: { _id: string; name: string };
+  shopId: { _id: string; name: string } | string | null;
   category: string;
   featured: boolean;
   stock?: number;
@@ -42,6 +42,20 @@ export default function ProductManagement() {
     fetchProducts();
     fetchShops();
   }, []);
+
+  const getProductShopId = (product: Product) => {
+    if (product.shopId && typeof product.shopId === 'object') {
+      return product.shopId._id;
+    }
+    return typeof product.shopId === 'string' ? product.shopId : '';
+  };
+
+  const getProductShopName = (product: Product) => {
+    if (product.shopId && typeof product.shopId === 'object') {
+      return product.shopId.name;
+    }
+    return 'Unknown Shop';
+  };
 
   const fetchProducts = async () => {
     try {
@@ -101,7 +115,7 @@ export default function ProductManagement() {
     setFormData({
       name: product.name,
       price: product.price,
-      shopId: typeof product.shopId === 'object' ? product.shopId._id : product.shopId,
+      shopId: getProductShopId(product),
       category: product.category,
       featured: product.featured,
       stock: product.stock || 0,
@@ -143,7 +157,7 @@ export default function ProductManagement() {
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesShop = !filterShop || (typeof p.shopId === 'object' ? p.shopId._id === filterShop : p.shopId === filterShop);
+    const matchesShop = !filterShop || getProductShopId(p) === filterShop;
     return matchesSearch && matchesShop;
   });
 
@@ -380,7 +394,7 @@ export default function ProductManagement() {
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className="text-gray-300 text-sm">
-                      {typeof product.shopId === 'object' ? product.shopId.name : 'Unknown Shop'}
+                      {getProductShopName(product)}
                     </span>
                   </td>
                   <td className="px-6 py-5">
