@@ -27,13 +27,17 @@ export async function PATCH(
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
-    const shop = await Shop.findByIdAndUpdate(id, body, { new: true });
+    const shop = await Shop.findByIdAndUpdate(id, body, {
+      new: true,
+      runValidators: true,
+    });
     if (!shop) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
     }
     return NextResponse.json(shop);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update shop' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to update shop';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

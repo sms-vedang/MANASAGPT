@@ -19,7 +19,8 @@ export default function Login() {
     try {
       const response = await fetch('/api/auth/check');
       if (response.ok) {
-        router.push('/admin');
+        const data = await response.json();
+        router.push(data.user?.role === 'shop_owner' ? '/shop-owner' : '/admin');
       }
     } catch (error) {
       // Not logged in
