@@ -10,11 +10,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  useEffect(() => {
-    // Check if already logged in
-    void checkAuth();
-  }, [checkAuth]);
-
+  // Declare checkAuth BEFORE useEffect that uses it
   const checkAuth = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/check');
@@ -23,9 +19,13 @@ export default function Login() {
         router.push(data.user?.role === 'shop_owner' ? '/shop-owner' : '/admin');
       }
     } catch {
-      // Not logged in
+      // Not logged in, stay on page
     }
   }, [router]);
+
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +60,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center">
       <div className="bg-gray-800 p-8 rounded-lg w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6 text-white">CityAI Admin Login</h1>
+        <h1 className="text-2xl font-bold text-center mb-6 text-white">ManasaGPT Login</h1>
 
         {error && (
           <div className="bg-red-600 text-white p-3 rounded mb-4">
@@ -101,7 +101,7 @@ export default function Login() {
         </form>
 
         <div className="mt-4 text-center text-gray-400 text-sm">
-          Demo credentials: admin / admin123
+          Admin / Shop Owner login
         </div>
       </div>
     </div>

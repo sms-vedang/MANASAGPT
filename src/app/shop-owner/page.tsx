@@ -10,6 +10,36 @@ interface User {
   shopId?: string;
 }
 
+interface ShopOrder {
+  _id: string;
+  productName: string;
+  productPrice: number;
+  quantity: number;
+  totalPrice: number;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+  note?: string;
+  createdAt: string;
+}
+
+const ORDER_STATUS_NEXT: Record<string, string> = {
+  pending: 'confirmed',
+  confirmed: 'preparing',
+  preparing: 'ready',
+  ready: 'delivered',
+};
+
+const ORDER_STATUS_COLOR: Record<string, string> = {
+  pending: '#f59e0b',
+  confirmed: '#3b82f6',
+  preparing: '#8b5cf6',
+  ready: '#06b6d4',
+  delivered: '#10b981',
+  cancelled: '#ef4444',
+};
+
 interface Shop {
   _id: string;
   name: string;
@@ -34,7 +64,7 @@ interface Product {
   stock?: number;
 }
 
-type ActivePanel = 'overview' | 'shop' | 'products';
+type ActivePanel = 'overview' | 'shop' | 'products' | 'orders';
 
 const emptyProductForm = {
   name: '',
@@ -69,6 +99,11 @@ export default function ShopOwnerPage() {
   const [savingProduct, setSavingProduct] = useState(false);
   const [savingShop, setSavingShop] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
+
+  // Orders
+  const [orders, setOrders] = useState<ShopOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [updatingOrder, setUpdatingOrder] = useState<string | null>(null);
 
   const stats = useMemo(() => {
     const totalProducts = products.length;
@@ -166,9 +201,45 @@ export default function ShopOwnerPage() {
     }
   }, [router]);
 
+  const fetchOrders = async (shopId: string) => {
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`/api/orders?shopId=${shopId}&limit=50`);
+      const data = await res.json();
+      // Filter only this shop's orders client-side as a fallback
+      const all: ShopOrder[] = data.orders || [];
+      setOrders(all);
+    } catch {
+      // silently fail
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    setUpdatingOrder(orderId);
+    try {
+      await fetch(`/api/orders?id=${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (user?.shopId) await fetchOrders(user.shopId);
+    } finally {
+      setUpdatingOrder(null);
+    }
+  };
+
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (user?.shopId && activePanel === 'orders') {
+      void fetchOrders(user.shopId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel, user?.shopId]);
 
   const resetProductForm = () => {
     setProductForm(emptyProductForm);
@@ -392,6 +463,7 @@ export default function ShopOwnerPage() {
               { id: 'overview' as ActivePanel, label: 'Overview', note: 'Snapshot and alerts' },
               { id: 'shop' as ActivePanel, label: 'Shop Profile', note: 'Business details and discoverability' },
               { id: 'products' as ActivePanel, label: 'Products', note: 'Catalog, pricing, and stock' },
+              { id: 'orders' as ActivePanel, label: 'Orders', note: 'Customer orders from ManasaGPT' },
             ].map((item) => (
               <button
                 key={item.id}
@@ -812,6 +884,104 @@ export default function ShopOwnerPage() {
                   </div>
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {activePanel === 'orders' ? (
+            <section className="glass-panel rounded-[30px] p-6 sm:p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Incoming Orders</p>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">Customer Orders</h3>
+                </div>
+                <button
+                  onClick={() => user?.shopId && void fetchOrders(user.shopId)}
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+
+              {ordersLoading ? (
+                <div className="py-12 text-center text-sm text-slate-400">Loading orders...</div>
+              ) : orders.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.02] p-10 text-center">
+                  <div className="text-4xl mb-3">📭</div>
+                  <p className="text-sm text-slate-400">No orders yet. When customers order via ManasaGPT chat, they will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {orders.map((order) => {
+                    const color = ORDER_STATUS_COLOR[order.status] || '#64748b';
+                    const nextStatus = ORDER_STATUS_NEXT[order.status];
+                    return (
+                      <div key={order._id} className="rounded-[24px] border border-white/8 bg-white/3 p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            {/* Status + time */}
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              <span style={{
+                                background: `${color}20`,
+                                color,
+                                border: `1px solid ${color}40`,
+                                padding: '2px 10px',
+                                borderRadius: 20,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                textTransform: 'capitalize' as const,
+                              }}>
+                                {order.status}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {new Date(order.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <span className="text-xs text-slate-600 font-mono">
+                                #{order._id.slice(-6).toUpperCase()}
+                              </span>
+                            </div>
+
+                            {/* Product */}
+                            <p className="text-base font-bold text-white">
+                              {order.productName} <span className="font-normal text-slate-400">×{order.quantity}</span>
+                            </p>
+                            <p className="text-sm font-semibold text-[var(--accent)] mt-1">₹{order.totalPrice}</p>
+
+                            {/* Customer */}
+                            <div className="mt-3 grid sm:grid-cols-2 gap-1 text-sm text-slate-300">
+                              <span>👤 {order.customerName}</span>
+                              <span>📞 {order.customerPhone}</span>
+                              <span className="sm:col-span-2">📍 {order.customerAddress}</span>
+                              {order.note && <span className="sm:col-span-2 text-[var(--accent)]">💬 {order.note}</span>}
+                            </div>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex flex-col gap-2 shrink-0">
+                            {nextStatus && (
+                              <button
+                                onClick={() => void updateOrderStatus(order._id, nextStatus)}
+                                disabled={updatingOrder === order._id}
+                                className="rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-bold text-slate-950 capitalize transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
+                              >
+                                {updatingOrder === order._id ? '...' : `→ ${nextStatus}`}
+                              </button>
+                            )}
+                            {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                              <button
+                                onClick={() => void updateOrderStatus(order._id, 'cancelled')}
+                                disabled={updatingOrder === order._id}
+                                className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/20 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           ) : null}
         </main>

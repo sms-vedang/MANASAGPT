@@ -44,17 +44,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/orders — list all orders (admin)
+// GET /api/orders — list all orders (admin or shopId-filtered)
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const shopId = searchParams.get('shopId');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1);
 
-    const filter: Record<string, string> = {};
+    const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
+    if (shopId) filter.shopId = shopId;
 
     const [orders, total] = await Promise.all([
       Order.find(filter)
