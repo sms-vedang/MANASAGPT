@@ -51,8 +51,12 @@ export async function PATCH(
             category: body.category,
             address: body.address,
             phone: body.phone,
+            whatsapp: body.whatsapp,
             website: body.website,
+            openingHours: body.openingHours,
+            description: body.description,
             tags: body.tags,
+            homeDelivery: body.homeDelivery,
           };
 
     const shop = await Shop.findByIdAndUpdate(id, allowedUpdates, {

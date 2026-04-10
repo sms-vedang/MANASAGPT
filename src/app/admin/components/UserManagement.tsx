@@ -6,6 +6,7 @@ interface Shop {
   _id: string;
   name: string;
   category: string;
+  address: string;
 }
 
 interface User {
@@ -15,22 +16,18 @@ interface User {
   shopId?: Shop;
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  admin: 'from-red-500/20 to-rose-500/20 border-red-500/30 text-red-300',
-  shop_owner: 'from-emerald-500/20 to-green-500/20 border-emerald-500/30 text-emerald-300',
-  data_entry: 'from-sky-500/20 to-blue-500/20 border-sky-500/30 text-sky-300',
-};
-
-const ROLE_BADGE: Record<string, string> = {
-  admin: 'bg-red-500/20 text-red-300 border border-red-500/30',
-  shop_owner: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-  data_entry: 'bg-sky-500/20 text-sky-300 border border-sky-500/30',
+const ROLE_COLORS: Record<string, { bg: string; border: string; text: string; glow: string }> = {
+  admin: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', text: '#f87171', glow: 'rgba(239,68,68,0.15)' },
+  shop_owner: { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', text: '#34d399', glow: 'rgba(16,185,129,0.15)' },
+  data_entry: { bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)', text: '#93c5fd', glow: 'rgba(59,130,246,0.15)' },
 };
 
 const ROLE_ICONS: Record<string, string> = {
-  admin: '👑',
-  shop_owner: '🏪',
-  data_entry: '✏️',
+  admin: '👑', shop_owner: '🏪', data_entry: '✏️',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin', shop_owner: 'Shop Owner', data_entry: 'Data Entry',
 };
 
 export default function UserManagement() {
@@ -38,15 +35,16 @@ export default function UserManagement() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-    role: 'shop_owner' as 'admin' | 'shop_owner' | 'data_entry',
-    shopId: '',
+    username: '', password: '', role: 'shop_owner' as 'admin' | 'shop_owner' | 'data_entry', shopId: '',
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -55,16 +53,13 @@ export default function UserManagement() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [usersRes, shopsRes] = await Promise.all([
-        fetch('/api/users'),
-        fetch('/api/shops'),
-      ]);
+      const [usersRes, shopsRes] = await Promise.all([fetch('/api/users'), fetch('/api/shops')]);
       const usersData = await usersRes.json();
       const shopsData = await shopsRes.json();
       setUsers(Array.isArray(usersData) ? usersData : []);
       setShops(Array.isArray(shopsData) ? shopsData : []);
-    } catch (err) {
-      console.error('Failed to fetch data:', err);
+    } catch {
+      setError('Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -72,51 +67,60 @@ export default function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setError(''); setSuccess(''); setSaving(true);
 
     const payload: Record<string, unknown> = {
-      username: formData.username,
-      password: formData.password,
+      username: formData.username.trim(),
       role: formData.role,
     };
-    if (formData.role === 'shop_owner' && formData.shopId) {
-      payload.shopId = formData.shopId;
-    }
+    if (formData.password) payload.password = formData.password;
+    if (formData.role === 'shop_owner' && formData.shopId) payload.shopId = formData.shopId;
+    if (formData.role !== 'shop_owner') payload.shopId = null;
 
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
+      const url = editingUser ? `/api/users/${editingUser._id}` : '/api/users';
+      const method = editingUser ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to create user');
-        return;
-      }
-
-      setSuccess(`User "${formData.username}" created successfully!`);
-      setFormData({ username: '', password: '', role: 'shop_owner', shopId: '' });
+      if (!res.ok) { setError(data.error || 'Failed to save user'); return; }
+      setSuccess(editingUser ? `User "${formData.username}" updated!` : `User "${formData.username}" created!`);
+      resetForm();
       setShowForm(false);
       fetchData();
-    } catch (err) {
+    } catch {
       setError('Network error. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setSuccess('User deleted successfully.');
-        setDeleteConfirm(null);
-        fetchData();
-      }
-    } catch (err) {
-      setError('Failed to delete user.');
-    }
+      if (res.ok) { setSuccess('User deleted.'); setDeleteConfirm(null); fetchData(); }
+      else setError('Failed to delete user.');
+    } catch { setError('Failed to delete user.'); }
+  };
+
+  const startEdit = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      username: user.username,
+      password: '',
+      role: user.role,
+      shopId: user.shopId?._id || '',
+    });
+    setShowForm(true);
+    setError(''); setSuccess('');
+  };
+
+  const resetForm = () => {
+    setFormData({ username: '', password: '', role: 'shop_owner', shopId: '' });
+    setEditingUser(null);
   };
 
   const roleCounts = users.reduce((acc, u) => {
@@ -124,217 +128,307 @@ export default function UserManagement() {
     return acc;
   }, {} as Record<string, number>);
 
+  const filteredUsers = users.filter(u => {
+    const q = searchQuery.toLowerCase();
+    const matchSearch = !q || u.username.toLowerCase().includes(q) || (u.shopId?.name?.toLowerCase().includes(q) || false);
+    const matchRole = !filterRole || u.role === filterRole;
+    return matchSearch && matchRole;
+  });
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400">Loading users...</p>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, flexDirection: 'column', gap: 12 }}>
+        <div style={{ width: 44, height: 44, border: '3px solid rgba(139,92,246,0.2)', borderTop: '3px solid #7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: '#64748b', fontSize: 14 }}>Loading users...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Role Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        {(['admin', 'shop_owner', 'data_entry'] as const).map(role => {
+          const c = ROLE_COLORS[role];
+          return (
+            <div key={role} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 18, padding: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 28 }}>{ROLE_ICONS[role]}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: c.text }}>{roleCounts[role] || 0}</div>
+              <div style={{ color: c.text, fontSize: 12, fontWeight: 600, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{ROLE_LABELS[role]}</div>
+            </div>
+          );
+        })}
+      </div>
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h2 className="text-3xl font-bold text-white">User Management</h2>
-          <p className="text-slate-400 mt-1">Create and manage admin, shop owner, and data entry accounts</p>
+          <h2 style={{ color: '#f1f5f9', fontSize: 22, fontWeight: 800, margin: 0 }}>User Management</h2>
+          <p style={{ color: '#475569', fontSize: 13, margin: '4px 0 0' }}>Create and manage admin, shop owner, and data entry accounts</p>
         </div>
         <button
-          onClick={() => { setShowForm(!showForm); setError(''); setSuccess(''); }}
-          className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-lg shadow-violet-500/20"
+          onClick={() => { setShowForm(!showForm); if (!showForm) resetForm(); setError(''); setSuccess(''); }}
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
         >
-          <span className="text-lg">+</span>
-          {showForm ? 'Cancel' : 'Create User'}
+          {showForm && !editingUser ? '✕ Cancel' : '＋ Create User'}
         </button>
       </div>
 
-      {/* Role Summary Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        {(['admin', 'shop_owner', 'data_entry'] as const).map((role) => (
-          <div key={role} className={`rounded-xl border p-4 bg-gradient-to-br ${ROLE_COLORS[role]}`}>
-            <div className="text-2xl mb-1">{ROLE_ICONS[role]}</div>
-            <div className="text-2xl font-bold text-white">{roleCounts[role] || 0}</div>
-            <div className="text-sm capitalize">{role.replace('_', ' ')}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Feedback Messages */}
+      {/* Feedback */}
       {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl px-4 py-3 flex items-center gap-2">
-          <span>✅</span> {success}
+        <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 12, padding: '12px 16px', color: '#34d399', fontSize: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+          ✅ {success}
         </div>
       )}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 flex items-center gap-2">
-          <span>⚠️</span> {error}
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, padding: '12px 16px', color: '#f87171', fontSize: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+          ⚠️ {error}
         </div>
       )}
 
-      {/* Create Form */}
+      {/* Form */}
       {showForm && (
-        <div className="bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 shadow-xl">
-          <h3 className="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-            <span>👤</span> Create New User
-          </h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Username</label>
+        <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: 20, padding: 28, backdropFilter: 'blur(12px)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <h3 style={{ color: '#e2e8f0', fontSize: 17, fontWeight: 700, margin: 0 }}>
+              {editingUser ? `✏️ Editing: ${editingUser.username}` : '👤 Create New User'}
+            </h3>
+            <button onClick={() => { setShowForm(false); resetForm(); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: '#94a3b8', cursor: 'pointer', borderRadius: 8, padding: '6px 12px', fontSize: 16 }}>✕</button>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
+            {/* Username */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={lbl}>Username *</label>
               <input
-                type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="e.g. rameshkirana"
-                className="w-full bg-slate-900/60 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-500 transition"
+                onChange={e => setFormData(p => ({ ...p, username: e.target.value }))}
+                style={inp}
+                placeholder="e.g. ramesh_kirana"
                 required
+                autoComplete="off"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+
+            {/* Password */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={lbl}>{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label>
               <input
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Set a strong password"
-                className="w-full bg-slate-900/60 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-500 transition"
-                required
-                minLength={4}
+                onChange={e => setFormData(p => ({ ...p, password: e.target.value }))}
+                style={inp}
+                placeholder={editingUser ? 'Leave blank to keep unchanged' : 'Set a strong password'}
+                required={!editingUser}
+                minLength={editingUser ? 0 : 4}
+                autoComplete="new-password"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Role</label>
+
+            {/* Role */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={lbl}>Role *</label>
               <select
                 value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'shop_owner' | 'data_entry', shopId: '' })}
-                className="w-full bg-slate-900/60 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-500 transition"
+                onChange={e => setFormData(p => ({ ...p, role: e.target.value as typeof p.role, shopId: '' }))}
+                style={sel}
               >
                 <option value="shop_owner">🏪 Shop Owner</option>
                 <option value="data_entry">✏️ Data Entry</option>
                 <option value="admin">👑 Admin</option>
               </select>
             </div>
+
+            {/* Shop Assignment */}
             {formData.role === 'shop_owner' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Assign Shop</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={lbl}>Assign to Shop {editingUser ? '' : '*'}</label>
                 <select
                   value={formData.shopId}
-                  onChange={(e) => setFormData({ ...formData, shopId: e.target.value })}
-                  className="w-full bg-slate-900/60 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-500 transition"
-                  required
+                  onChange={e => setFormData(p => ({ ...p, shopId: e.target.value }))}
+                  style={sel}
+                  required={!editingUser}
                 >
                   <option value="">-- Select a Shop --</option>
-                  {shops.map((shop) => (
+                  {shops.map(shop => (
                     <option key={shop._id} value={shop._id}>
                       {shop.name} ({shop.category})
                     </option>
                   ))}
                 </select>
+                {shops.length === 0 && (
+                  <span style={{ color: '#f59e0b', fontSize: 11 }}>⚠️ No shops found. Create a shop first.</span>
+                )}
               </div>
             )}
-            <div className="md:col-span-2 flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 transition"
-              >
-                Cancel
-              </button>
+
+            {/* Role info box */}
+            <div style={{ gridColumn: '1 / -1', background: ROLE_COLORS[formData.role].bg, border: `1px solid ${ROLE_COLORS[formData.role].border}`, borderRadius: 14, padding: '12px 16px' }}>
+              <p style={{ color: ROLE_COLORS[formData.role].text, fontSize: 13, fontWeight: 600, margin: '0 0 4px' }}>
+                {ROLE_ICONS[formData.role]} {ROLE_LABELS[formData.role]} Role
+              </p>
+              <p style={{ color: '#64748b', fontSize: 12, margin: 0 }}>
+                {formData.role === 'admin' && 'Full access to all admin panel features, shop, user, and AI management.'}
+                {formData.role === 'shop_owner' && 'Can manage their linked shop profile, products, and view incoming orders.'}
+                {formData.role === 'data_entry' && 'Can add and update city knowledge, places, and basic content. No shop or user management.'}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium transition shadow-lg shadow-violet-500/25"
+                disabled={saving}
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
               >
-                Create User
+                {saving ? '⏳ Saving...' : editingUser ? '💾 Update User' : '✅ Create User'}
               </button>
+              {editingUser && (
+                <button type="button" onClick={() => { setShowForm(false); resetForm(); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#94a3b8', padding: '10px 20px', fontSize: 14, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              )}
             </div>
           </form>
         </div>
       )}
 
-      {/* Users Table */}
-      <div className="bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-2xl overflow-hidden shadow-xl">
-        <div className="px-6 py-4 border-b border-slate-700/50">
-          <h3 className="font-semibold text-white">All Users ({users.length})</h3>
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          style={{ ...inp, flex: 1, minWidth: 180, maxWidth: 320 }}
+          placeholder="🔍 Search by username or shop..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        <select style={{ ...sel, minWidth: 160 }} value={filterRole} onChange={e => setFilterRole(e.target.value)}>
+          <option value="">All Roles</option>
+          <option value="admin">👑 Admin</option>
+          <option value="shop_owner">🏪 Shop Owner</option>
+          <option value="data_entry">✏️ Data Entry</option>
+        </select>
+        <span style={{ color: '#475569', fontSize: 13 }}>
+          Showing {filteredUsers.length} of {users.length} users
+        </span>
+      </div>
+
+      {/* Users List */}
+      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 20, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, margin: 0 }}>All Users ({filteredUsers.length})</h3>
         </div>
-        {users.length === 0 ? (
-          <div className="text-center py-16 text-slate-400">
-            <div className="text-5xl mb-3">👥</div>
-            <p className="font-medium">No users found</p>
-            <p className="text-sm mt-1">Create the first user to get started</p>
+
+        {filteredUsers.length === 0 ? (
+          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
+            <p style={{ color: '#475569', fontSize: 15, margin: 0 }}>
+              {users.length === 0 ? 'No users yet. Create the first user to get started.' : 'No users match your search.'}
+            </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider bg-slate-900/40">
-                  <th className="px-6 py-3">User</th>
-                  <th className="px-6 py-3">Role</th>
-                  <th className="px-6 py-3">Linked Shop</th>
-                  <th className="px-6 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/40">
-                {users.map((user) => (
-                  <tr key={user._id} className="hover:bg-slate-700/20 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm">
-                          {user.username.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="font-medium text-white">{user.username}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${ROLE_BADGE[user.role]}`}>
-                        {ROLE_ICONS[user.role]} {user.role.replace('_', ' ')}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {filteredUsers.map((user, idx) => {
+              const c = ROLE_COLORS[user.role];
+              return (
+                <div
+                  key={user._id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+                    borderBottom: idx < filteredUsers.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {/* Avatar */}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                    background: `linear-gradient(135deg, #7c3aed, #4f46e5)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 700, fontSize: 17,
+                  }}>
+                    {user.username.charAt(0).toUpperCase()}
+                  </div>
+
+                  {/* User info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: 15 }}>{user.username}</span>
+                      <span style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>
+                        {ROLE_ICONS[user.role]} {ROLE_LABELS[user.role]}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.shopId ? (
-                        <div>
-                          <p className="text-white font-medium">{user.shopId.name}</p>
-                          <p className="text-xs text-slate-400 capitalize">{user.shopId.category}</p>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500 text-sm">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {deleteConfirm === user._id ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="text-xs text-slate-400">Sure?</span>
-                          <button
-                            onClick={() => handleDelete(user._id)}
-                            className="text-xs bg-red-500/20 text-red-300 border border-red-500/30 px-3 py-1 rounded-lg hover:bg-red-500/30 transition"
-                          >
-                            Yes, Delete
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="text-xs bg-slate-700 text-slate-300 px-3 py-1 rounded-lg hover:bg-slate-600 transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
+                    </div>
+                    {user.shopId ? (
+                      <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>
+                        🏪 {user.shopId.name} <span style={{ color: '#334155' }}>· {user.shopId.category}</span>
+                      </p>
+                    ) : (
+                      <p style={{ color: '#334155', fontSize: 12, margin: '4px 0 0' }}>
+                        {user.role === 'shop_owner' ? '⚠️ No shop linked' : 'No shop linked'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => startEdit(user)}
+                      style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)', color: '#c4b5fd', borderRadius: 10, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    {deleteConfirm === user._id ? (
+                      <div style={{ display: 'flex', gap: 6 }}>
                         <button
-                          onClick={() => setDeleteConfirm(user._id)}
-                          className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition"
+                          onClick={() => handleDelete(user._id)}
+                          style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                         >
-                          🗑 Remove
+                          Yes, Delete
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: '#94a3b8', borderRadius: 10, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(user._id)}
+                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        🗑 Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
+      </div>
+
+      {/* Shop-Owner linkage guidance */}
+      <div style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)', borderRadius: 16, padding: 20 }}>
+        <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13, margin: '0 0 8px' }}>💡 How Shop Owner Accounts Work</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          {[
+            { step: '1', text: 'Create a shop first in Shop Management tab' },
+            { step: '2', text: 'Create user with "Shop Owner" role' },
+            { step: '3', text: 'Assign the shop to that user in the form' },
+            { step: '4', text: 'Shop owner can log in and manage their shop' },
+          ].map(item => (
+            <div key={item.step} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ background: 'rgba(139,92,246,0.2)', color: '#c4b5fd', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{item.step}</span>
+              <p style={{ color: '#64748b', fontSize: 13, margin: 0, lineHeight: 1.5 }}>{item.text}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
+
+const lbl: React.CSSProperties = { color: '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' };
+const inp: React.CSSProperties = { width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
+const sel: React.CSSProperties = { width: '100%', background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'pointer' };

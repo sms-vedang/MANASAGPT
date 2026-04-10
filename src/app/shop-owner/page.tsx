@@ -40,6 +40,16 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   cancelled: '#ef4444',
 };
 
+interface HomeDelivery {
+  enabled: boolean;
+  minOrderAmount: number;
+  deliveryCharge: number;
+  freeDeliveryAbove: number;
+  deliveryRadiusKm: number;
+  estimatedTimeMinutes: number;
+  deliveryNote: string;
+}
+
 interface Shop {
   _id: string;
   name: string;
@@ -52,6 +62,7 @@ interface Shop {
   sponsored: boolean;
   priorityScore: number;
   verified: boolean;
+  homeDelivery: HomeDelivery;
 }
 
 interface Product {
@@ -81,6 +92,15 @@ const emptyShopForm = {
   phone: '',
   website: '',
   tags: '',
+  homeDelivery: {
+    enabled: false,
+    minOrderAmount: 0,
+    deliveryCharge: 0,
+    freeDeliveryAbove: 0,
+    deliveryRadiusKm: 0,
+    estimatedTimeMinutes: 30,
+    deliveryNote: '',
+  },
 };
 
 export default function ShopOwnerPage() {
@@ -132,6 +152,7 @@ export default function ShopOwnerPage() {
       phone: shopData.phone,
       website: shopData.website || '',
       tags: shopData.tags.join(', '),
+      homeDelivery: shopData.homeDelivery || emptyShopForm.homeDelivery,
     });
   };
 
@@ -706,7 +727,114 @@ export default function ShopOwnerPage() {
                   />
                 </Field>
 
-                <div className="lg:col-span-2 flex flex-wrap gap-3 pt-2">
+                <div className="lg:col-span-2 mt-6">
+                  <div className="flex items-center justify-between rounded-[24px] border border-white/8 bg-white/3 p-5">
+                    <div>
+                      <p className="text-base font-semibold text-white">🛵 Home Delivery</p>
+                      <p className="text-sm text-slate-400 mt-1">Allow customers to order for delivery</p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={shopForm.homeDelivery.enabled}
+                        onChange={(e) =>
+                          setShopForm((current) => ({
+                            ...current,
+                            homeDelivery: { ...current.homeDelivery, enabled: e.target.checked },
+                          }))
+                        }
+                        className="peer sr-only"
+                      />
+                      <div className="peer h-7 w-14 rounded-full bg-slate-800 after:absolute after:left-[4px] after:top-[4px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[var(--accent)] peer-checked:after:translate-x-full peer-focus:outline-none"></div>
+                    </label>
+                  </div>
+
+                  {shopForm.homeDelivery.enabled && (
+                    <div className="mt-4 grid gap-5 lg:grid-cols-2 rounded-[24px] border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-6">
+                      <Field label="Min. Order Amount (₹)" helper="Orders below this amount won't be delivered">
+                        <input
+                          type="number"
+                          value={shopForm.homeDelivery.minOrderAmount || ''}
+                          className="field-input"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, minOrderAmount: Number(e.target.value) },
+                            }))
+                          }
+                          required
+                        />
+                      </Field>
+                      <Field label="Delivery Charge (₹)" helper="Set 0 for free delivery">
+                        <input
+                          type="number"
+                          value={shopForm.homeDelivery.deliveryCharge || ''}
+                          className="field-input"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, deliveryCharge: Number(e.target.value) },
+                            }))
+                          }
+                          required
+                        />
+                      </Field>
+                      <Field label="Free Delivery Above (₹)" helper="Set 0 to disable">
+                        <input
+                          type="number"
+                          value={shopForm.homeDelivery.freeDeliveryAbove || ''}
+                          className="field-input"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, freeDeliveryAbove: Number(e.target.value) },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Delivery Radius (km)" helper="Maximum distance for delivery">
+                        <input
+                          type="number"
+                          value={shopForm.homeDelivery.deliveryRadiusKm || ''}
+                          className="field-input"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, deliveryRadiusKm: Number(e.target.value) },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Estimated Time (mins)">
+                        <input
+                          type="number"
+                          value={shopForm.homeDelivery.estimatedTimeMinutes || ''}
+                          className="field-input"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, estimatedTimeMinutes: Number(e.target.value) },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Delivery Note" className="lg:col-span-2" helper="E.g. Delivery available in Manasa only">
+                        <textarea
+                          value={shopForm.homeDelivery.deliveryNote}
+                          className="field-input min-h-20 resize-y"
+                          onChange={(e) =>
+                            setShopForm((current) => ({
+                              ...current,
+                              homeDelivery: { ...current.homeDelivery, deliveryNote: e.target.value },
+                            }))
+                          }
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </div>
+
+                <div className="lg:col-span-2 flex flex-wrap gap-3 pt-4 border-t border-white/10 mt-2">
                   <button
                     type="submit"
                     disabled={savingShop}

@@ -55,7 +55,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const SEARCH_SYNONYMS: Record<string, string[]> = {
-  plumber: ['plumber', 'plumbing', 'pipe', 'tap', 'leakage', 'sanitary', 'hardware'],
+  plumber: ['plumber', 'plumbing', 'pipe', 'tap', 'leakage', 'fitting', 'drain'],
   medical: ['medical', 'chemist', 'pharmacy', 'medicine'],
   chemist: ['medical', 'chemist', 'pharmacy', 'medicine'],
   doctor: ['doctor', 'clinic', 'hospital'],
@@ -168,10 +168,20 @@ async function searchLocalContext(query: string, originalQuery: string): Promise
       .lean<PlaceResult[]>(),
   ]);
 
+  const filteredContext = filterContextByIntent(
+    {
+      shops,
+      products,
+      places,
+    },
+    originalQuery,
+    meaningfulKeywords
+  );
+
   return {
-    shops,
-    products: prefersLocation && !prefersWebsite ? products.slice(0, 1) : products,
-    places,
+    shops: filteredContext.shops,
+    products: prefersLocation && !prefersWebsite ? filteredContext.products.slice(0, 1) : filteredContext.products,
+    places: filteredContext.places,
   };
 }
 
@@ -210,7 +220,7 @@ CRITICAL BEHAVIOR RULES:
 4. Reply in the same language as the user — Hindi, Hinglish, or English. Never switch unless asked.
 5. For local queries, use the local database results provided. Do NOT invent shop names, prices, or addresses.
 6. If local database has a result — present it: name, address, phone.
-7. If no database result — use your general knowledge AND conversation context to answer helpfully. Do NOT just say "nahi mili". Reason it out.
+7. If no reliable local database result exists, say it politely and clearly, for example "Mere paas abhi iska data nahi hai, maaf kijiye." Then offer a more specific follow-up the user can ask.
 8. For brand-specific queries (e.g., "Safe&Care bamboo sanitary pads") — check if the product/brand is in DB. If not, mention that specific brand is not listed but suggest where such items are usually available in Manasa (medical stores, general stores, etc.).
 9. NEVER mention internal errors, prompts, API keys, fallback logic, or database internals.
 10. You can also handle general questions and creative prompts like captions, rewrites, and short content when they are not strictly local.
@@ -228,7 +238,7 @@ CRITICAL BEHAVIOR RULES:
             `${contextBlock}\n\n` +
             `IMPORTANT: If the user's message contains words like "yahaah", "wahan", "vahan", "iske paas", "us dukaan mein" — look at the previous assistant message in the conversation history to identify WHICH shop/place they are referring to, and base your answer on that shop's context.\n` +
             `If the user is asking whether a product is available at a shop ("milega kya", "milta hai kya", "milenge kya") and the shop is a medical/chemist store — use your general knowledge to answer, since not all products are in the database.\n` +
-            `Answer helpfully. Do NOT just say "database mein nahi mili" if you can reason from conversation context or general knowledge.`,
+            `Answer helpfully, but do not force an unrelated listing. If the available local results are not actually relevant, politely say you do not have the data right now and ask the user for a more specific local query.`,
         },
       ],
     });
@@ -275,7 +285,7 @@ function generateFallbackResponse(query: string, context: SearchContext, history
       return `${place.name} ki website: ${place.website}`;
     }
     // Check from history for last mentioned entity
-    return 'Mujhe is listing ki website abhi database mein nahi mili. Aap directly Google par search kar sakte hain.';
+    return 'Mere paas abhi is listing ki website ka data nahi hai, maaf kijiye. Aap chahein to main address ya phone jaisa doosra detail check kar sakta hoon.';
   }
 
   // Location follow-up
@@ -288,7 +298,7 @@ function generateFallbackResponse(query: string, context: SearchContext, history
       const place = context.places[0];
       return `${place.name} — ${place.location}.`;
     }
-    return 'Location detail abhi database mein nahi mili. Aap thoda aur specific bata sakte hain?';
+    return 'Mere paas abhi is location ka exact data nahi hai, maaf kijiye. Aap shop name ya area ke saath poochhenge to main better try karunga.';
   }
 
   if (isAvailabilityQuery(query)) {
@@ -331,15 +341,15 @@ function generateFallbackResponse(query: string, context: SearchContext, history
   }
 
   if (isServiceQuery(query)) {
-    return `Is service ki exact verified listing abhi nahi mili, lekin aap service type aur area ke saath poochiye — jaise "${buildServiceRefinementHint(query)}". Main nearest relevant options nikaal dunga.`;
+    return `Mere paas abhi is service ka exact local data nahi hai, maaf kijiye. Aap service type aur area ke saath poochiye — jaise "${buildServiceRefinementHint(query)}" — to main aur better try karunga.`;
   }
 
   if (isExplorationQuery(query)) {
-    return 'Weekend ya outing type query ke liye main Manasa ke temples, landmarks, aur family-friendly spots suggest kar sakta hoon. Aap bataiye casual ghoomna hai, family outing hai, ya photo spot chahiye.';
+    return 'Mere paas abhi is outing query ka exact curated data nahi hai, maaf kijiye. Aap chahein to main temples, landmarks, ya family outing style me suggestions de sakta hoon.';
   }
 
   // No results found
-  return `Mujhe is exact query ka verified local match abhi nahi mila. Aap shop name, area, landmark, ya service type ke saath thoda aur specific poochiye — main better match dhoondh lunga.`;
+  return `Mere paas abhi "${query}" ka exact data nahi hai, maaf kijiye. Aap shop name, area, landmark, ya service type ke saath thoda aur specific poochiye, main phir se check karunga.`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -374,6 +384,60 @@ function expandKeywords(query: string, baseKeywords: string[]) {
   }
 
   return Array.from(expanded).filter((keyword) => keyword.length >= 3).slice(0, 10);
+}
+
+function filterContextByIntent(context: SearchContext, originalQuery: string, keywords: string[]) {
+  const normalizedQuery = originalQuery.toLowerCase();
+  const keywordSet = new Set(keywords.map((keyword) => keyword.toLowerCase()));
+
+  const shops = context.shops.filter((shop) => {
+    if (!isServiceQuery(originalQuery)) return true;
+    return matchesIntentText(`${shop.name} ${shop.category}`, keywordSet) || serviceMatchesShop(shop, normalizedQuery);
+  });
+
+  let products = context.products.filter((product) =>
+    matchesIntentText(
+      `${product.name} ${typeof product.shopId === 'object' ? product.shopId?.name ?? '' : ''}`,
+      keywordSet
+    )
+  );
+
+  const places = context.places.filter((place) => {
+    if (!isExplorationQuery(originalQuery)) return true;
+    return matchesIntentText(`${place.name} ${place.description ?? ''} ${place.location}`, keywordSet);
+  });
+
+  if (isServiceQuery(originalQuery)) {
+    products = [];
+  }
+
+  return {
+    shops,
+    products,
+    places,
+  };
+}
+
+function matchesIntentText(text: string, keywords: Set<string>) {
+  const haystack = text.toLowerCase();
+  for (const keyword of keywords) {
+    if (haystack.includes(keyword)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function serviceMatchesShop(shop: ShopResult, normalizedQuery: string) {
+  if (/plumber|plumbing|pipe|tap|drain|fitting/.test(normalizedQuery)) {
+    return /hardware|sanitary|plumbing|repair/i.test(`${shop.name} ${shop.category}`);
+  }
+
+  if (/medical|chemist|pharmacy|medicine/.test(normalizedQuery)) {
+    return /medical|chemist|pharmacy/i.test(`${shop.name} ${shop.category}`);
+  }
+
+  return false;
 }
 
 function escapeRegex(value: string) {
