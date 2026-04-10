@@ -478,8 +478,8 @@ export default function Home() {
               Send
             </button>
           </div>
-          <p className="mx-auto mt-2 w-full max-w-4xl text-xs text-slate-400">
-            `Enter` to send, `Shift + Enter` for a new line.
+          <p className="mx-auto mt-2 w-full max-w-4xl text-center text-[10px] text-slate-400">
+            ManasaGPT can make mistakes. Check important info. &nbsp;&bull;&nbsp; `Enter` to send, `Shift + Enter` for a new line.
           </p>
         </footer>
       </div>
