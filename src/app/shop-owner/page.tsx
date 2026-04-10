@@ -88,7 +88,11 @@ export default function ShopOwner() {
       if (response.ok) {
         const allProducts = await response.json();
         const shopProducts = allProducts.filter((p: Product) =>
-          typeof p.shopId === 'string' ? p.shopId === shopId : p.shopId._id === shopId
+          !p.shopId
+            ? false
+            : typeof p.shopId === 'string'
+              ? p.shopId === shopId
+              : p.shopId._id === shopId
         );
         setProducts(shopProducts);
       }

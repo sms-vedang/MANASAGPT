@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Shop from '@/models/Shop';
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbConnect();
+    const { id } = await params;
+    const shop = await Shop.findById(id);
+    if (!shop) {
+      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
+    return NextResponse.json(shop);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to fetch shop' }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
