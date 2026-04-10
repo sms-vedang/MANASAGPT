@@ -32,6 +32,14 @@ type ApiHistoryMessage = {
   content: string;
 };
 
+interface OrderInit {
+  productName: string;
+  productPrice: number;
+  shopName: string;
+  productId?: string;
+  shopId?: string;
+}
+
 const SUGGESTIONS = [
   'Manasa me best medical store kaunsa hai?',
   'Plumber milega kya near bus stand?',
@@ -55,6 +63,10 @@ export default function Home() {
   const [isPaused, setIsPaused] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [slideDir, setSlideDir] = useState<'left' | 'right'>('left');
+  const [orderModal, setOrderModal] = useState<OrderInit | null>(null);
+  const [orderForm, setOrderForm] = useState({ name: '', phone: '', address: '', qty: 1, note: '' });
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -163,6 +175,13 @@ export default function Home() {
         ...prev,
         { id: (Date.now() + 1).toString(), text, sender: 'bot' },
       ]);
+
+      // If API signals order intent, open order modal
+      if (data.orderInit) {
+        setOrderModal(data.orderInit as OrderInit);
+        setOrderForm({ name: '', phone: '', address: '', qty: 1, note: '' });
+        setOrderSuccess(false);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -181,6 +200,51 @@ export default function Home() {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void sendMessage();
+    }
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!orderModal || orderLoading) return;
+    const { name, phone, address, qty } = orderForm;
+    if (!name.trim() || !phone.trim() || !address.trim()) return;
+
+    setOrderLoading(true);
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: orderModal.productId,
+          productName: orderModal.productName,
+          productPrice: orderModal.productPrice,
+          shopId: orderModal.shopId,
+          shopName: orderModal.shopName,
+          customerName: name.trim(),
+          customerPhone: phone.trim(),
+          customerAddress: address.trim(),
+          quantity: qty,
+          note: orderForm.note.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOrderSuccess(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            text: `✅ Order placed! "${orderModal.productName}" x${qty} from ${orderModal.shopName}. Total: ₹${(orderModal.productPrice * qty).toFixed(0)}. Shop aapko confirm karega!`,
+            sender: 'bot',
+          },
+        ]);
+        setTimeout(() => setOrderModal(null), 2000);
+      } else {
+        alert(data.error || 'Order failed. Try again.');
+      }
+    } catch {
+      alert('Network error. Please try again.');
+    } finally {
+      setOrderLoading(false);
     }
   };
 
@@ -419,6 +483,88 @@ export default function Home() {
           </p>
         </footer>
       </div>
+
+      {/* ── Order Modal ──────────────────────────────────────────── */}
+      {orderModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center">
+          <div className="w-full max-w-md rounded-t-3xl border border-white/10 bg-[#0f1727] p-6 shadow-2xl md:rounded-3xl animate-in slide-in-from-bottom duration-300">
+            {orderSuccess ? (
+              <div className="flex flex-col items-center gap-4 py-8 text-center">
+                <div className="text-5xl">✅</div>
+                <h3 className="text-xl font-semibold text-white">Order Placed!</h3>
+                <p className="text-sm text-slate-300">Shop aapko soon confirm karega.</p>
+              </div>
+            ) : (
+              <>
+                {/* Header */}
+                <div className="mb-5 flex items-start justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400">🛒 Place Order
+                    </p>
+                    <h3 className="mt-1 text-lg font-bold text-white">{orderModal.productName}</h3>
+                    <p className="text-sm text-slate-400">
+                      {orderModal.shopName} &nbsp;&bull;&nbsp; ₹{orderModal.productPrice} / item
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setOrderModal(null)}
+                    className="rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Quantity pill */}
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="text-sm text-slate-300">Quantity:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setOrderForm((f) => ({ ...f, qty: Math.max(1, f.qty - 1) }))}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/15"
+                    >-</button>
+                    <span className="w-6 text-center font-semibold text-white">{orderForm.qty}</span>
+                    <button
+                      onClick={() => setOrderForm((f) => ({ ...f, qty: f.qty + 1 }))}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/15"
+                    >+</button>
+                  </div>
+                  <span className="ml-auto text-sm font-semibold text-emerald-400">
+                    Total: ₹{(orderModal.productPrice * orderForm.qty).toFixed(0)}
+                  </span>
+                </div>
+
+                {/* Fields */}
+                <div className="flex flex-col gap-3">
+                  {([
+                    { key: 'name', placeholder: 'Aapka naam *', type: 'text' },
+                    { key: 'phone', placeholder: 'Phone number *', type: 'tel' },
+                    { key: 'address', placeholder: 'Delivery address *', type: 'text' },
+                    { key: 'note', placeholder: 'Note (optional)', type: 'text' },
+                  ] as const).map(({ key, placeholder, type }) => (
+                    <input
+                      key={key}
+                      type={type}
+                      placeholder={placeholder}
+                      value={orderForm[key]}
+                      onChange={(e) => setOrderForm((f) => ({ ...f, [key]: e.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-[#182235] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-400"
+                    />
+                  ))}
+                </div>
+
+                {/* Submit */}
+                <button
+                  onClick={() => void handlePlaceOrder()}
+                  disabled={orderLoading || !orderForm.name.trim() || !orderForm.phone.trim() || !orderForm.address.trim()}
+                  className="mt-4 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {orderLoading ? 'Placing Order...' : '✔ Confirm Order'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

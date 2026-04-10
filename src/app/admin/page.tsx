@@ -11,6 +11,7 @@ import AdManagement from './components/AdManagement';
 import Analytics from './components/Analytics';
 import AIControl from './components/AIControl';
 import UserManagement from './components/UserManagement';
+import OrderManagement from './components/OrderManagement';
 import Settings from './components/Settings';
 
 type Tab =
@@ -22,6 +23,7 @@ type Tab =
   | 'ads'
   | 'analytics'
   | 'ai'
+  | 'orders'
   | 'users'
   | 'settings';
 
@@ -35,6 +37,7 @@ interface User {
 const tabs = [
   { id: 'dashboard' as Tab, name: 'Dashboard', icon: '📊', section: 'Overview' },
   { id: 'analytics' as Tab, name: 'Analytics', icon: '📈', section: 'Overview' },
+  { id: 'orders' as Tab, name: 'Orders', icon: '📦', section: 'Overview' },
   { id: 'shops' as Tab, name: 'Shops', icon: '🏪', section: 'Content' },
   { id: 'products' as Tab, name: 'Products', icon: '🛍️', section: 'Content' },
   { id: 'places' as Tab, name: 'Places', icon: '🏛️', section: 'Content' },
@@ -90,6 +93,7 @@ export default function AdminPage() {
       case 'analytics': return <Analytics />;
       case 'ai': return <AIControl />;
       case 'users': return <UserManagement />;
+      case 'orders': return <OrderManagement />;
       case 'settings': return <Settings />;
       default: return <Dashboard />;
     }
