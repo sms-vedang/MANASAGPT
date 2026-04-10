@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 interface City {
   _id?: string;
   name: string;
+  description: string;
   district: string;
   state: string;
   country: string;
@@ -66,6 +67,7 @@ export default function CityKnowledge() {
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<City>({
     name: '',
+    description: '',
     district: '',
     state: '',
     country: '',
@@ -180,6 +182,15 @@ export default function CityKnowledge() {
                 className="bg-gray-700 p-2 rounded"
                 required
               />
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-400 mb-2">City Description</label>
+                <textarea
+                  placeholder="Enter a general description of the city..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full bg-gray-700 p-2 rounded min-h-[100px]"
+                />
+              </div>
               <input
                 type="text"
                 placeholder="State"
@@ -252,7 +263,7 @@ export default function CityKnowledge() {
 
           {/* Save/Cancel */}
           <div className="flex space-x-2">
-            <button type="submit" className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+            <button type="submit" className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-semibold">
               Save City Data
             </button>
             <button
@@ -261,7 +272,7 @@ export default function CityKnowledge() {
                 setEditing(false);
                 if (city) setFormData(city);
               }}
-              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded"
+              className="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg"
             >
               Cancel
             </button>
@@ -272,27 +283,33 @@ export default function CityKnowledge() {
           {/* Display City Data */}
           <div className="bg-gray-800 p-6 rounded-lg">
             <h3 className="text-xl font-semibold mb-4">Basic Info</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><strong>Name:</strong> {city.name}</div>
-              <div><strong>District:</strong> {city.district}</div>
-              <div><strong>State:</strong> {city.state}</div>
-              <div><strong>Population:</strong> {city.population.toLocaleString()}</div>
-              <div><strong>Area:</strong> {city.area}</div>
-              <div><strong>Wards:</strong> {city.wards.total}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <p className="text-sm text-gray-400 mb-1">Description</p>
+                <p className="text-lg leading-relaxed">{city.description || 'No description added.'}</p>
+              </div>
+              <div><strong className="text-gray-400">Name:</strong><p className="text-lg">{city.name}</p></div>
+              <div><strong className="text-gray-400">District:</strong><p className="text-lg">{city.district}</p></div>
+              <div><strong className="text-gray-400">State:</strong><p className="text-lg">{city.state}</p></div>
+              <div><strong className="text-gray-400">Population:</strong><p className="text-lg">{city.population.toLocaleString()}</p></div>
+              <div><strong className="text-gray-400">Area:</strong><p className="text-lg">{city.area}</p></div>
+              <div><strong className="text-gray-400">Wards:</strong><p className="text-lg">{city.wards.total}</p></div>
             </div>
           </div>
 
           <div className="bg-gray-800 p-6 rounded-lg">
             <h3 className="text-xl font-semibold mb-4">Government</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><strong>MLA:</strong> {city.mla.name} ({city.mla.party})</div>
-              <div><strong>MP:</strong> {city.mp.name} ({city.mp.party})</div>
+              <div><strong className="text-gray-400">MLA:</strong><p className="text-lg">{city.mla.name} ({city.mla.party})</p></div>
+              <div><strong className="text-gray-400">MP:</strong><p className="text-lg">{city.mp.name} ({city.mp.party})</p></div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="text-center py-8 text-gray-400">
-          No city data found. Click &quot;Add City Data&quot; to get started.
+        <div className="text-center py-12 border-2 border-dashed border-gray-700 rounded-3xl">
+          <div className="text-5xl mb-4">🏗️</div>
+          <p className="text-gray-400 text-lg">No city data found.</p>
+          <p className="text-gray-500 mt-2">Click &quot;Add City Data&quot; to initialize the knowledge system for Manasa.</p>
         </div>
       )}
     </div>

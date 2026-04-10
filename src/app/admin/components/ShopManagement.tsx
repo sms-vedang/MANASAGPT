@@ -59,9 +59,9 @@ const emptyForm = {
 
 const CATEGORIES = [
   'Grocery', 'Pharmacy / Medical', 'Clothing', 'Electronics',
-  'Restaurant / Food', 'Bakery / Sweets', 'Stationery', 'Hardware',
-  'Vegetables & Fruits', 'Dairy', 'Mobile Recharge', 'Salon / Beauty',
-  'Automobile', 'Other',
+  'Restaurant / Food', 'Bakery / Sweets', 'Hotels / Lodging', 'Stationery', 
+  'Hardware', 'Vegetables & Fruits', 'Dairy', 'Mobile Recharge', 
+  'Salon / Beauty', 'Automobile', 'Services (Plumber, etc.)', 'Hospital / Clinic', 'Other',
 ];
 
 export default function ShopManagement() {

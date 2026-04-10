@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ICity extends Document {
   name: string;
+  description: string;
   district: string;
   state: string;
   country: string;
@@ -59,6 +60,7 @@ export interface ICity extends Document {
 
 const CitySchema: Schema = new Schema({
   name: { type: String, required: true },
+  description: { type: String },
   district: { type: String, required: true },
   state: { type: String, required: true },
   country: { type: String, required: true },
