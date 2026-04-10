@@ -22,6 +22,7 @@ interface Shop {
   website?: string;
   rating: number;
   tags: string[];
+  providedServices?: string[];
   sponsored: boolean;
   priorityScore: number;
   verified: boolean;
@@ -40,6 +41,7 @@ const emptyForm = {
   website: '',
   rating: 0,
   tags: '',
+  providedServices: '',
   sponsored: false,
   priorityScore: 0,
   verified: false,
@@ -106,6 +108,7 @@ export default function ShopManagement() {
       website: shop.website || '',
       rating: shop.rating,
       tags: shop.tags.join(', '),
+      providedServices: (shop.providedServices || []).join(', '),
       sponsored: shop.sponsored,
       priorityScore: shop.priorityScore,
       verified: shop.verified,
@@ -126,6 +129,7 @@ export default function ShopManagement() {
     const payload = {
       ...formData,
       tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
+      providedServices: formData.providedServices.split(',').map(t => t.trim()).filter(Boolean),
     };
     try {
       const url = editingShop ? `/api/shops/${editingShop._id}` : '/api/shops';
@@ -298,6 +302,9 @@ export default function ShopManagement() {
                 </FormField>
                 <FormField label="Tags (comma separated)" span2>
                   <input style={s.input} value={formData.tags} onChange={e => setFormData(p => ({ ...p, tags: e.target.value }))} placeholder="grocery, fresh produce, daily needs" />
+                </FormField>
+                <FormField label="Provided Services (comma separated)" span2 textHint="E.g. Pipe fitting, Tank cleaning (for Service Providers)">
+                  <input style={s.input} value={formData.providedServices} onChange={e => setFormData(p => ({ ...p, providedServices: e.target.value }))} placeholder="Plumbing, AC Repair, Electrician..." />
                 </FormField>
               </div>
             )}
@@ -523,6 +530,14 @@ export default function ShopManagement() {
                       <p style={s.expandLabel}>Tags</p>
                       <p style={s.expandValue}>{shop.tags.length > 0 ? shop.tags.join(', ') : 'None'}</p>
                     </div>
+                    {shop.providedServices && shop.providedServices.length > 0 && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <p style={s.expandLabel}>Provided Services</p>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                          {shop.providedServices.map(srv => <span key={srv} style={{ background: 'rgba(73, 214, 197, 0.1)', color: '#49d6c5', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', border: '1px solid rgba(73, 214, 197, 0.3)' }}>{srv}</span>)}
+                        </div>
+                      </div>
+                    )}
                     {shop.website && (
                       <div>
                         <p style={s.expandLabel}>Website</p>
