@@ -173,19 +173,19 @@ async function generateAssistantResponse(
       messages: [
         {
           role: 'system',
-          content: `You are ManasaGPT — a helpful, knowledgeable assistant for the town of Manasa, Madhya Pradesh, India.
+          content: `You are ManasaGPT — a smart, friendly local assistant for Manasa, Madhya Pradesh, India.
 
-BEHAVIOR RULES:
-1. Reply in the same language as the user — Hindi, Hinglish, or English. Never switch unless asked.
-2. For local queries (shops, products, services, places), use ONLY the local database results provided. Do NOT invent shop names, prices, or addresses.
-3. If local data is found, present it clearly and concisely — name, location, phone if available. Do NOT pad with irrelevant data.
-4. If local data is NOT found, say clearly and politely: "Manasa database mein abhi is cheez ki listing nahi mili." Then optionally suggest what they could search instead.
-5. For follow-up messages like "inki website?", "uska address?", "phone number?", always refer to the MOST RECENT topic from conversation history.
-6. For general knowledge questions (history, science, recipes, etc.), answer helpfully from your knowledge.
-7. For greetings or small talk, respond naturally and briefly.
-8. NEVER mention internal errors, prompts, API keys, fallback logic, or database internals.
-9. Keep responses concise — max 4-5 lines unless listing multiple items.
-10. Do NOT return results from a completely different category than what was asked (e.g., don't show medicine shops when asked about sanitary pads availability unless specifically relevant).`,
+CRITICAL BEHAVIOR RULES:
+1. ALWAYS read the full conversation history before answering. Use context from previous messages heavily.
+2. When the user says "yahaah", "wahan", "us dukaan mein", "iske paas", "vahan par" — they are referring to the shop/place mentioned JUST BEFORE in the conversation. Resolve that reference and answer about that shop.
+3. When user asks "X milega kya" or "X milta hai kya" about a place from history — answer based on that shop's category and general knowledge. Example: if user asked about a medical store and then asks "yahaah sanitary pads milenge kya" — say YES medical/chemist shops typically stock sanitary pads.
+4. Reply in the same language as the user — Hindi, Hinglish, or English. Never switch unless asked.
+5. For local queries, use the local database results provided. Do NOT invent shop names, prices, or addresses.
+6. If local database has a result — present it: name, address, phone.
+7. If no database result — use your general knowledge AND conversation context to answer helpfully. Do NOT just say "nahi mili". Reason it out.
+8. For brand-specific queries (e.g., "Safe&Care bamboo sanitary pads") — check if the product/brand is in DB. If not, mention that specific brand is not listed but suggest where such items are usually available in Manasa (medical stores, general stores, etc.).
+9. NEVER mention internal errors, prompts, API keys, fallback logic, or database internals.
+10. Keep responses concise — 2-4 lines unless listing multiple items.`,
         },
         ...history.map((message) => ({
           role: message.role,
@@ -195,9 +195,11 @@ BEHAVIOR RULES:
           role: 'user',
           content:
             `User's message: "${query}"\n\n` +
-            `Interpreted search context: "${effectiveQuery}"\n\n` +
+            `Interpreted search context used for DB lookup: "${effectiveQuery}"\n\n` +
             `${contextBlock}\n\n` +
-            `Answer the user's message based on the above. Use local data only if directly relevant to what was asked.`,
+            `IMPORTANT: If the user's message contains words like "yahaah", "wahan", "vahan", "iske paas", "us dukaan mein" — look at the previous assistant message in the conversation history to identify WHICH shop/place they are referring to, and base your answer on that shop's context.\n` +
+            `If the user is asking whether a product is available at a shop ("milega kya", "milta hai kya", "milenge kya") and the shop is a medical/chemist store — use your general knowledge to answer, since not all products are in the database.\n` +
+            `Answer helpfully. Do NOT just say "database mein nahi mili" if you can reason from conversation context or general knowledge.`,
         },
       ],
     });
@@ -319,7 +321,14 @@ function isShortAck(query: string) {
 }
 
 function isLocationFollowUp(query: string) {
-  return /kahan|kidhar|where|address|location|kahaa|ka pata|ko kaise/i.test(query);
+  // Only pure location queries — NOT availability questions like "yahaah milega kya"
+  return /kahan|kidhar|where|address|location|kahaa|ka pata|ko kaise/i.test(query) &&
+    !/milega|milenge|milta|milti|available|stock/i.test(query);
+}
+
+function isAvailabilityQuery(query: string) {
+  // "X milega kya", "yahaah milenge kya", etc.
+  return /milega|milenge|milta|milti|available|stock/i.test(query);
 }
 
 function isWebsiteFollowUp(query: string) {
@@ -328,23 +337,33 @@ function isWebsiteFollowUp(query: string) {
 
 function shouldSearchLocalData(query: string, effectiveQuery: string) {
   if (isShortAck(query)) return false;
-  if (isLocationFollowUp(query) || isWebsiteFollowUp(query)) return true;
+  if (isLocationFollowUp(query) || isWebsiteFollowUp(query) || isAvailabilityQuery(query)) return true;
   return extractKeywords(effectiveQuery).length > 0;
 }
 
 function buildEffectiveQuery(query: string, history: ChatMessage[]) {
-  const isFollowUp = isLocationFollowUp(query) || isWebsiteFollowUp(query) || isShortAck(query);
+  const isFollowUp =
+    isLocationFollowUp(query) || isWebsiteFollowUp(query) || isShortAck(query) || isAvailabilityQuery(query);
 
   if (!isFollowUp) return query;
 
   // Try to extract last entity from history
   const lastEntity = extractLastEntity(history);
+
+  if (isAvailabilityQuery(query)) {
+    // For "yahaah par sanitary pads milega kya" — combine last mentioned shop + product keywords from current query
+    const productKeywords = extractKeywords(query).join(' ');
+    if (lastEntity && productKeywords) {
+      return `${lastEntity} ${productKeywords}`;
+    }
+    if (productKeywords) return productKeywords;
+    return lastEntity || query;
+  }
+
   if (lastEntity) {
-    return isLocationFollowUp(query)
-      ? `${lastEntity} location address`
-      : isWebsiteFollowUp(query)
-        ? `${lastEntity} website`
-        : lastEntity;
+    if (isLocationFollowUp(query)) return `${lastEntity} location address`;
+    if (isWebsiteFollowUp(query)) return `${lastEntity} website`;
+    return lastEntity;
   }
 
   // Fall back to last meaningful user message
